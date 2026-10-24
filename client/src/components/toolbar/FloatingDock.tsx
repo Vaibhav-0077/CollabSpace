@@ -14,7 +14,7 @@ import {
   Redo2 
 } from 'lucide-react';
 import { useCanvasStore } from '../../store/canvasStore';
-import { ToolType } from '../../types/canvas';
+import type { ToolType } from '../../types/canvas';
 
 interface FloatingDockProps {
   onAddRectangle: () => void;
