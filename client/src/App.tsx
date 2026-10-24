@@ -5,6 +5,7 @@ import { TopBar } from './components/header/TopBar';
 import { FloatingDock } from './components/toolbar/FloatingDock';
 import { ContextualToolbar } from './components/toolbar/ContextualToolbar';
 import { CanvasControls } from './components/canvas/CanvasControls';
+import { RemoteCursors } from './components/collaboration/RemoteCursors';
 import { QuickStartCard } from './components/modals/QuickStartCard';
 import { ShareModal } from './components/modals/ShareModal';
 import { AIPromptModal } from './components/modals/AIPromptModal';
@@ -17,6 +18,7 @@ export function App() {
 
   const {
     canvasRef,
+    canvasVpt,
     addRectangle,
     addCircle,
     addDiamond,
@@ -68,6 +70,9 @@ export function App() {
         className="canvas-container-wrapper"
         tabIndex={0}
       />
+
+      {/* Live Multiplayer Remote Cursors Overlay */}
+      <RemoteCursors canvasVpt={canvasVpt} zoom={zoom} />
 
       {/* Disappearing Beginner Guide on Blank Canvas */}
       <QuickStartCard />
