@@ -5,8 +5,10 @@ import {
   Download, 
   Sun, 
   Moon, 
-  Check, 
-  Github 
+  Users, 
+  Github,
+  Wifi,
+  WifiOff
 } from 'lucide-react';
 import { useCanvasStore } from '../../store/canvasStore';
 
@@ -22,8 +24,15 @@ export const TopBar: React.FC<TopBarProps> = ({ onExport }) => {
     toggleTheme, 
     nickname, 
     userColor,
+    collaborators,
+    mySocketId,
+    isConnected,
     setIsShareModalOpen 
   } = useCanvasStore();
+
+  const otherCollaborators = Object.values(collaborators).filter(
+    (c) => c.socketId !== mySocketId
+  );
 
   return (
     <header className="top-bar">
@@ -46,15 +55,78 @@ export const TopBar: React.FC<TopBarProps> = ({ onExport }) => {
           title="Click to rename board"
         />
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '0 6px', color: '#10b981', fontSize: '11px', fontWeight: 600 }}>
-          <Check size={12} />
-          <span>Saved</span>
+        {/* Live Multiplayer Status Indicator */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '5px',
+            padding: '2px 8px',
+            borderRadius: '12px',
+            background: isConnected ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+            color: isConnected ? '#10b981' : '#ef4444',
+            fontSize: '11px',
+            fontWeight: 600,
+          }}
+          title={isConnected ? 'Connected to real-time sync server' : 'Disconnected from server'}
+        >
+          {isConnected ? <Wifi size={12} /> : <WifiOff size={12} />}
+          <span>{isConnected ? 'Live' : 'Offline'}</span>
         </div>
       </div>
 
-      {/* Collaborator & Actions */}
+      {/* Collaborator Avatars & Actions */}
       <div className="top-bar-interactive glass-panel" style={{ padding: '4px 8px' }}>
-        {/* User Avatar Badge */}
+        {/* Remote Collaborator Avatars */}
+        {otherCollaborators.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', marginRight: '4px', gap: '-6px' }}>
+            {otherCollaborators.slice(0, 3).map((collab) => (
+              <div
+                key={collab.socketId}
+                title={`${collab.nickname} is collaborating`}
+                style={{
+                  width: '24px',
+                  height: '24px',
+                  borderRadius: '50%',
+                  backgroundColor: collab.color || '#8b5cf6',
+                  color: '#ffffff',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  border: '2px solid var(--bg-surface-solid)',
+                  marginLeft: '-6px',
+                  boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
+                }}
+              >
+                {collab.nickname.charAt(0).toUpperCase()}
+              </div>
+            ))}
+            {otherCollaborators.length > 3 && (
+              <div
+                style={{
+                  width: '24px',
+                  height: '24px',
+                  borderRadius: '50%',
+                  backgroundColor: 'var(--bg-hover)',
+                  color: 'var(--text-secondary)',
+                  fontSize: '10px',
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  border: '2px solid var(--bg-surface-solid)',
+                  marginLeft: '-6px',
+                }}
+              >
+                +{otherCollaborators.length - 3}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Current User Avatar Badge */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 8px', fontSize: '12px', fontWeight: 600 }}>
           <div
             style={{
@@ -79,6 +151,20 @@ export const TopBar: React.FC<TopBarProps> = ({ onExport }) => {
         >
           <Share2 size={15} />
           <span>Share</span>
+          {otherCollaborators.length > 0 && (
+            <span
+              style={{
+                background: 'var(--accent-primary)',
+                color: '#fff',
+                fontSize: '10px',
+                padding: '1px 5px',
+                borderRadius: '10px',
+                marginLeft: '2px',
+              }}
+            >
+              {otherCollaborators.length + 1}
+            </span>
+          )}
         </button>
 
         {/* Export High-Res PNG Button */}
@@ -105,12 +191,12 @@ export const TopBar: React.FC<TopBarProps> = ({ onExport }) => {
 
         {/* Open Source / GitHub */}
         <a
-          href="https://github.com"
+          href="https://github.com/Vaibhav-0077/CollabSpace-"
           target="_blank"
           rel="noopener noreferrer"
           className="dock-tool-btn"
           style={{ width: '34px', height: '34px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          title="Free & Open Source on GitHub"
+          title="CollabSpace on GitHub"
         >
           <Github size={16} />
         </a>
