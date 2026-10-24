@@ -4,6 +4,21 @@ import { ToolType, SelectedObjectState } from '../types/canvas';
 
 const RANDOM_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#06b6d4'];
 
+export interface CollaboratorInfo {
+  socketId: string;
+  nickname: string;
+  color: string;
+  x: number;
+  y: number;
+}
+
+export interface RemoteLockInfo {
+  objectId: string;
+  socketId: string;
+  nickname: string;
+  color: string;
+}
+
 interface CanvasStoreState {
   activeTool: ToolType;
   selectedFill: string;
@@ -24,6 +39,12 @@ interface CanvasStoreState {
   isAIModalOpen: boolean;
   selectedObject: SelectedObjectState | null;
 
+  // Real-Time Multiplayer State
+  isConnected: boolean;
+  mySocketId: string | null;
+  collaborators: Record<string, CollaboratorInfo>;
+  remoteLocks: Record<string, RemoteLockInfo>;
+
   // Actions
   setActiveTool: (tool: ToolType) => void;
   setSelectedFill: (fill: string) => void;
@@ -42,6 +63,16 @@ interface CanvasStoreState {
   setIsExportModalOpen: (open: boolean) => void;
   setIsAIModalOpen: (open: boolean) => void;
   setSelectedObject: (obj: SelectedObjectState | null) => void;
+
+  // Real-time Actions
+  setIsConnected: (connected: boolean) => void;
+  setMySocketId: (id: string | null) => void;
+  setCollaborators: (users: Record<string, CollaboratorInfo>) => void;
+  addCollaborator: (user: CollaboratorInfo) => void;
+  removeCollaborator: (socketId: string) => void;
+  updateCollaboratorCursor: (socketId: string, x: number, y: number) => void;
+  setRemoteLock: (lock: RemoteLockInfo) => void;
+  removeRemoteLock: (objectId: string) => void;
 }
 
 export const useCanvasStore = create<CanvasStoreState>((set) => {
@@ -73,6 +104,12 @@ export const useCanvasStore = create<CanvasStoreState>((set) => {
     isAIModalOpen: false,
     selectedObject: null,
 
+    // Real-time state
+    isConnected: false,
+    mySocketId: null,
+    collaborators: {},
+    remoteLocks: {},
+
     setActiveTool: (activeTool) => set({ activeTool }),
     setSelectedFill: (selectedFill) => set({ selectedFill }),
     setSelectedStroke: (selectedStroke) => set({ selectedStroke }),
@@ -102,5 +139,36 @@ export const useCanvasStore = create<CanvasStoreState>((set) => {
     setIsExportModalOpen: (isExportModalOpen) => set({ isExportModalOpen }),
     setIsAIModalOpen: (isAIModalOpen) => set({ isAIModalOpen }),
     setSelectedObject: (selectedObject) => set({ selectedObject }),
+
+    // Real-time actions
+    setIsConnected: (isConnected) => set({ isConnected }),
+    setMySocketId: (mySocketId) => set({ mySocketId }),
+    setCollaborators: (collaborators) => set({ collaborators }),
+    addCollaborator: (user) => set((state) => ({
+      collaborators: { ...state.collaborators, [user.socketId]: user },
+    })),
+    removeCollaborator: (socketId) => set((state) => {
+      const updated = { ...state.collaborators };
+      delete updated[socketId];
+      return { collaborators: updated };
+    }),
+    updateCollaboratorCursor: (socketId, x, y) => set((state) => {
+      const user = state.collaborators[socketId];
+      if (!user) return state;
+      return {
+        collaborators: {
+          ...state.collaborators,
+          [socketId]: { ...user, x, y },
+        },
+      };
+    }),
+    setRemoteLock: (lock) => set((state) => ({
+      remoteLocks: { ...state.remoteLocks, [lock.objectId]: lock },
+    })),
+    removeRemoteLock: (objectId) => set((state) => {
+      const updated = { ...state.remoteLocks };
+      delete updated[objectId];
+      return { remoteLocks: updated };
+    }),
   };
 });

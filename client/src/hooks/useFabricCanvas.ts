@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { 
   Canvas, 
   Rect, 
@@ -10,9 +10,11 @@ import {
   Point, 
   PencilBrush, 
   FabricObject,
-  TPointerEventInfo
+  TPointerEventInfo,
+  util
 } from 'fabric';
 import { useCanvasStore } from '../store/canvasStore';
+import { socketService } from '../services/socketService';
 import { nanoid } from 'nanoid';
 
 // Customize Fabric defaults for an ultra-premium feel
@@ -31,6 +33,7 @@ FabricObject.prototype.set({
 export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | null>) {
   const canvasRef = useRef<Canvas | null>(null);
   const canvasElementRef = useRef<HTMLCanvasElement | null>(null);
+  const [canvasVpt, setCanvasVpt] = useState<number[]>([1, 0, 0, 1, 0, 0]);
 
   const {
     activeTool,
@@ -42,13 +45,22 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     setActiveTool,
     setUndoRedoState,
     setSelectedObject,
-    setHasObjects
+    setHasObjects,
+    boardId,
+    nickname,
+    userColor,
   } = useCanvasStore();
 
   // History stack for Undo/Redo
   const historyRef = useRef<string[]>([]);
   const historyIndexRef = useRef<number>(-1);
   const isUndoRedoActionRef = useRef<boolean>(false);
+
+  // Guard against echo loops when receiving remote changes
+  const isRemoteMutationRef = useRef<boolean>(false);
+  const cursorThrottleRef = useRef<number>(0);
+  const transformThrottleRef = useRef<number>(0);
+  const currentLockedIdRef = useRef<string | null>(null);
 
   // Panning state
   const isPanningRef = useRef<boolean>(false);
@@ -57,10 +69,9 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
 
   // Helper to record history snapshot
   const saveHistory = useCallback(() => {
-    if (!canvasRef.current || isUndoRedoActionRef.current) return;
+    if (!canvasRef.current || isUndoRedoActionRef.current || isRemoteMutationRef.current) return;
     try {
       const json = JSON.stringify(canvasRef.current.toJSON());
-      // Truncate future states if we performed an action after undo
       if (historyIndexRef.current < historyRef.current.length - 1) {
         historyRef.current = historyRef.current.slice(0, historyIndexRef.current + 1);
       }
@@ -115,11 +126,19 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     isUndoRedoActionRef.current = false;
   }, [setUndoRedoState, setHasObjects]);
 
+  // Connect Socket.IO on mount
+  useEffect(() => {
+    socketService.connect(boardId, nickname, userColor);
+
+    return () => {
+      socketService.disconnect();
+    };
+  }, [boardId, nickname, userColor]);
+
   // Initialize Canvas
   useEffect(() => {
     if (!containerRef.current) return;
 
-    // Create the canvas element inside the container
     const canvasEl = document.createElement('canvas');
     canvasElementRef.current = canvasEl;
     containerRef.current.appendChild(canvasEl);
@@ -143,10 +162,9 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     brush.width = strokeWidth;
     canvas.freeDrawingBrush = brush;
 
-    // Save initial blank state
     saveHistory();
 
-    // Setup mouse wheel zoom (centered on pointer)
+    // Mouse wheel zoom
     const handleMouseWheel = (opt: TPointerEventInfo<WheelEvent>) => {
       const e = opt.e;
       const delta = e.deltaY;
@@ -158,6 +176,7 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
       const point = new Point(e.offsetX, e.offsetY);
       canvas.zoomToPoint(point, currentZoom);
       setZoom(Math.round(currentZoom * 100) / 100);
+      setCanvasVpt([...canvas.viewportTransform]);
       e.preventDefault();
       e.stopPropagation();
     };
@@ -165,7 +184,6 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     // Pan handling
     const handleMouseDown = (opt: TPointerEventInfo<MouseEvent>) => {
       const e = opt.e;
-      // Space + click or middle-click or Hand tool triggers panning
       if (isSpacePressedRef.current || e.button === 1 || activeTool === 'hand') {
         isPanningRef.current = true;
         canvas.selection = false;
@@ -176,12 +194,24 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     };
 
     const handleMouseMove = (opt: TPointerEventInfo<MouseEvent>) => {
+      // 1. Pan movement
       if (isPanningRef.current) {
         const e = opt.e;
         const deltaX = e.clientX - lastPanPosRef.current.x;
         const deltaY = e.clientY - lastPanPosRef.current.y;
         lastPanPosRef.current = { x: e.clientX, y: e.clientY };
         canvas.relativePan(new Point(deltaX, deltaY));
+        setCanvasVpt([...canvas.viewportTransform]);
+      }
+
+      // 2. Throttled Real-Time Cursor streaming (world coordinates)
+      const now = Date.now();
+      if (now - cursorThrottleRef.current > 30) {
+        const point = canvas.getScenePoint ? canvas.getScenePoint(opt.e) : (canvas as any).getPointer(opt.e);
+        if (point) {
+          socketService.emitCursorMove(Math.round(point.x), Math.round(point.y));
+          cursorThrottleRef.current = now;
+        }
       }
     };
 
@@ -194,16 +224,30 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
       }
     };
 
-    // Selection changes
+    // Selection changes & Ephemeral Locks
     const updateSelectionState = () => {
       const activeObj = canvas.getActiveObject();
       if (!activeObj) {
+        if (currentLockedIdRef.current) {
+          socketService.emitObjectUnlock(currentLockedIdRef.current);
+          currentLockedIdRef.current = null;
+        }
         setSelectedObject(null);
         return;
       }
+
+      const objId = (activeObj as any).id;
+      if (objId && objId !== currentLockedIdRef.current) {
+        if (currentLockedIdRef.current) {
+          socketService.emitObjectUnlock(currentLockedIdRef.current);
+        }
+        currentLockedIdRef.current = objId;
+        socketService.emitObjectLock(objId);
+      }
+
       const bound = activeObj.getBoundingRect();
       setSelectedObject({
-        id: (activeObj as any).id,
+        id: objId,
         type: activeObj.type,
         fill: (activeObj.get('fill') as string) || '#ffffff',
         stroke: (activeObj.get('stroke') as string) || '#6366f1',
@@ -216,23 +260,138 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
       });
     };
 
+    // Moving event (relay live transform to collaborators)
+    const handleObjectMoving = (opt: any) => {
+      const obj = opt.target;
+      if (!obj || isRemoteMutationRef.current) return;
+
+      const now = Date.now();
+      if (now - transformThrottleRef.current > 30) {
+        socketService.emitObjectTransforming({
+          id: obj.id,
+          left: Math.round(obj.left),
+          top: Math.round(obj.top),
+          scaleX: obj.scaleX,
+          scaleY: obj.scaleY,
+          angle: Math.round(obj.angle),
+        });
+        transformThrottleRef.current = now;
+      }
+    };
+
     canvas.on('mouse:wheel', handleMouseWheel);
     canvas.on('mouse:down', handleMouseDown);
     canvas.on('mouse:move', handleMouseMove);
     canvas.on('mouse:up', handleMouseUp);
+    canvas.on('object:moving', handleObjectMoving);
     canvas.on('selection:created', updateSelectionState);
     canvas.on('selection:updated', updateSelectionState);
-    canvas.on('selection:cleared', () => setSelectedObject(null));
-    canvas.on('object:modified', saveHistory);
-    canvas.on('object:added', () => {
-      setHasObjects(canvas.getObjects().length > 0);
-    });
-    canvas.on('object:removed', () => {
-      setHasObjects(canvas.getObjects().length > 0);
+    canvas.on('selection:cleared', () => {
+      if (currentLockedIdRef.current) {
+        socketService.emitObjectUnlock(currentLockedIdRef.current);
+        currentLockedIdRef.current = null;
+      }
       setSelectedObject(null);
     });
 
-    // Resize observer for responsive window resizing
+    // Object mutation sync
+    canvas.on('object:modified', (e) => {
+      saveHistory();
+      if (!isRemoteMutationRef.current && e.target) {
+        const serialized = e.target.toObject(['id', 'name', 'shadow', 'rx', 'ry']);
+        socketService.emitObjectModified(serialized);
+      }
+    });
+
+    canvas.on('object:added', (e) => {
+      setHasObjects(canvas.getObjects().length > 0);
+      if (!isRemoteMutationRef.current && e.target && (e.target as any).id) {
+        const serialized = e.target.toObject(['id', 'name', 'shadow', 'rx', 'ry']);
+        socketService.emitObjectAdded(serialized);
+      }
+    });
+
+    canvas.on('object:removed', (e) => {
+      setHasObjects(canvas.getObjects().length > 0);
+      setSelectedObject(null);
+      if (!isRemoteMutationRef.current && e.target && (e.target as any).id) {
+        socketService.emitObjectRemoved((e.target as any).id);
+      }
+    });
+
+    // Register Remote Event Handlers from Socket Service
+    socketService.onRemoteObjectTransforming = (data) => {
+      const target = canvas.getObjects().find((o: any) => o.id === data.id);
+      if (target) {
+        isRemoteMutationRef.current = true;
+        target.set({
+          left: data.left,
+          top: data.top,
+          ...(data.scaleX ? { scaleX: data.scaleX } : {}),
+          ...(data.scaleY ? { scaleY: data.scaleY } : {}),
+          ...(data.angle !== undefined ? { angle: data.angle } : {}),
+        });
+        target.setCoords();
+        canvas.requestRenderAll();
+        isRemoteMutationRef.current = false;
+      }
+    };
+
+    socketService.onRemoteObjectModified = async (objData) => {
+      const existing = canvas.getObjects().find((o: any) => o.id === objData.id);
+      isRemoteMutationRef.current = true;
+      if (existing) {
+        existing.set(objData);
+        existing.setCoords();
+      } else {
+        const [enlivened] = await util.enlivenObjects([objData]);
+        if (enlivened) {
+          canvas.add(enlivened as FabricObject);
+        }
+      }
+      canvas.requestRenderAll();
+      isRemoteMutationRef.current = false;
+      setHasObjects(canvas.getObjects().length > 0);
+    };
+
+    socketService.onRemoteObjectAdded = async (objData) => {
+      const existing = canvas.getObjects().find((o: any) => o.id === objData.id);
+      if (existing) return;
+      isRemoteMutationRef.current = true;
+      const [enlivened] = await util.enlivenObjects([objData]);
+      if (enlivened) {
+        canvas.add(enlivened as FabricObject);
+        canvas.requestRenderAll();
+      }
+      isRemoteMutationRef.current = false;
+      setHasObjects(canvas.getObjects().length > 0);
+    };
+
+    socketService.onRemoteObjectRemoved = (id) => {
+      const target = canvas.getObjects().find((o: any) => o.id === id);
+      if (target) {
+        isRemoteMutationRef.current = true;
+        canvas.remove(target);
+        canvas.requestRenderAll();
+        isRemoteMutationRef.current = false;
+        setHasObjects(canvas.getObjects().length > 0);
+      }
+    };
+
+    socketService.onRoomInitialized = async (objects) => {
+      if (!objects || Object.keys(objects).length === 0) return;
+      isRemoteMutationRef.current = true;
+      const list = Object.values(objects);
+      const enlivened = await util.enlivenObjects(list);
+      enlivened.forEach((item) => {
+        canvas.add(item as FabricObject);
+      });
+      canvas.requestRenderAll();
+      isRemoteMutationRef.current = false;
+      setHasObjects(canvas.getObjects().length > 0);
+    };
+
+    // Resize observer
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const { width: w, height: h } = entry.contentRect;
@@ -244,25 +403,22 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     });
     resizeObserver.observe(containerRef.current);
 
-    // Keyboard Spacebar listener for temporary pan toggle
+    // Keyboard Shortcuts
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.code === 'Space' && !isSpacePressedRef.current && (e.target as HTMLElement).tagName !== 'INPUT') {
         isSpacePressedRef.current = true;
         canvas.defaultCursor = 'grab';
         canvas.setCursor('grab');
       }
-      // Undo: Ctrl+Z / Cmd+Z
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
         e.preventDefault();
         undo();
       }
-      // Redo: Ctrl+Y or Cmd+Shift+Z
       if (((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'y') || 
           ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'z')) {
         e.preventDefault();
         redo();
       }
-      // Delete / Backspace: Remove selected object
       if ((e.key === 'Delete' || e.key === 'Backspace') && (e.target as HTMLElement).tagName !== 'INPUT') {
         const activeObj = canvas.getActiveObject();
         if (activeObj) {
@@ -295,7 +451,7 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
         canvasEl.parentNode.removeChild(canvasEl);
       }
     };
-  }, []); // Run once on mount
+  }, []);
 
   // Sync tool mode changes
   useEffect(() => {
@@ -521,6 +677,7 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
       }
       canvas.requestRenderAll();
       saveHistory();
+      socketService.emitObjectModified(active.toObject(['id', 'name', 'shadow', 'rx', 'ry']));
     }
   }, [saveHistory]);
 
@@ -532,6 +689,7 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
       active.set('stroke', color);
       canvas.requestRenderAll();
       saveHistory();
+      socketService.emitObjectModified(active.toObject(['id', 'name', 'shadow', 'rx', 'ry']));
     }
   }, [saveHistory]);
 
@@ -540,10 +698,14 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     if (!canvas) return;
     const active = canvas.getActiveObject();
     if (active) {
+      const objId = (active as any).id;
       canvas.remove(active);
       canvas.discardActiveObject();
       canvas.requestRenderAll();
       saveHistory();
+      if (objId) {
+        socketService.emitObjectRemoved(objId);
+      }
     }
   }, [saveHistory]);
 
@@ -553,8 +715,9 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     const active = canvas.getActiveObject();
     if (!active) return;
     const cloned = await active.clone();
+    const newId = nanoid(8);
     cloned.set({
-      id: nanoid(8),
+      id: newId,
       left: active.left + 24,
       top: active.top + 24,
     } as any);
@@ -562,6 +725,7 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     canvas.setActiveObject(cloned);
     canvas.requestRenderAll();
     saveHistory();
+    socketService.emitObjectAdded(cloned.toObject(['id', 'name', 'shadow', 'rx', 'ry']));
   }, [saveHistory]);
 
   // Viewport zoom helpers
@@ -573,6 +737,7 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     const center = canvas.getCenterPoint();
     canvas.zoomToPoint(new Point(center.x, center.y), nextZoom);
     setZoom(Math.round(nextZoom * 100) / 100);
+    setCanvasVpt([...canvas.viewportTransform]);
   }, [setZoom]);
 
   const zoomOut = useCallback(() => {
@@ -583,6 +748,7 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     const center = canvas.getCenterPoint();
     canvas.zoomToPoint(new Point(center.x, center.y), nextZoom);
     setZoom(Math.round(nextZoom * 100) / 100);
+    setCanvasVpt([...canvas.viewportTransform]);
   }, [setZoom]);
 
   const resetZoom = useCallback(() => {
@@ -590,6 +756,7 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     if (!canvas) return;
     canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
     setZoom(1);
+    setCanvasVpt([1, 0, 0, 1, 0, 0]);
     canvas.requestRenderAll();
   }, [setZoom]);
 
@@ -599,7 +766,7 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     if (!canvas) return;
     const dataURL = canvas.toDataURL({
       format: 'png',
-      multiplier: 2, // 2x retina crispness
+      multiplier: 2,
     });
     const link = document.createElement('a');
     link.download = `collabspace-${Date.now()}.png`;
@@ -623,6 +790,7 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
 
   return {
     canvasRef,
+    canvasVpt,
     addRectangle,
     addCircle,
     addDiamond,
