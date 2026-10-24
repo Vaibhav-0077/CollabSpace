@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { nanoid } from 'nanoid';
-import { ToolType, SelectedObjectState } from '../types/canvas';
+import type { ToolType, SelectedObjectState } from '../types/canvas';
 
 const RANDOM_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#06b6d4'];
 
