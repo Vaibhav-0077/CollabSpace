@@ -10,7 +10,8 @@ import {
   Point, 
   PencilBrush, 
   FabricObject,
-  TPointerEventInfo,
+  Shadow,
+  type TPointerEventInfo,
   util
 } from 'fabric';
 import { useCanvasStore } from '../store/canvasStore';
@@ -40,7 +41,6 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     selectedFill,
     selectedStroke,
     strokeWidth,
-    zoom,
     setZoom,
     setActiveTool,
     setUndoRedoState,
@@ -182,7 +182,7 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     };
 
     // Pan handling
-    const handleMouseDown = (opt: TPointerEventInfo<MouseEvent>) => {
+    const handleMouseDown = (opt: any) => {
       const e = opt.e;
       if (isSpacePressedRef.current || e.button === 1 || activeTool === 'hand') {
         isPanningRef.current = true;
@@ -193,7 +193,7 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
       }
     };
 
-    const handleMouseMove = (opt: TPointerEventInfo<MouseEvent>) => {
+    const handleMouseMove = (opt: any) => {
       // 1. Pan movement
       if (isPanningRef.current) {
         const e = opt.e;
@@ -591,12 +591,12 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
       fill: selectedFill === '#ffffff' ? '#fef08a' : selectedFill,
       rx: 6,
       ry: 6,
-      shadow: {
+      shadow: new Shadow({
         color: 'rgba(0,0,0,0.2)',
         blur: 16,
         offsetX: 0,
         offsetY: 8
-      }
+      })
     });
 
     const textbox = new Textbox(initialText, {
