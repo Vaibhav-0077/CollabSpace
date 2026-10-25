@@ -27,6 +27,11 @@ export function App() {
     addArrow,
     changeSelectedFill,
     changeSelectedStroke,
+    changeSelectedStrokeWidth,
+    changeSelectedStrokeStyle,
+    changeSelectedFontSize,
+    changeSelectedFontFamily,
+    changeSelectedTextAlign,
     deleteSelected,
     duplicateSelected,
     zoomIn,
@@ -82,6 +87,11 @@ export function App() {
       <ContextualToolbar
         onChangeFill={changeSelectedFill}
         onChangeStroke={changeSelectedStroke}
+        onChangeStrokeWidth={changeSelectedStrokeWidth}
+        onChangeStrokeStyle={changeSelectedStrokeStyle}
+        onChangeFontSize={changeSelectedFontSize}
+        onChangeFontFamily={changeSelectedFontFamily}
+        onChangeTextAlign={changeSelectedTextAlign}
         onDuplicate={duplicateSelected}
         onDelete={deleteSelected}
         onTidyUp={tidyUp}

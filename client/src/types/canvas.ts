@@ -16,6 +16,7 @@ export interface ColorOption {
 }
 
 export const PASTEL_COLORS: ColorOption[] = [
+  { value: 'transparent', label: 'Transparent' },
   { value: '#ffffff', label: 'White' },
   { value: '#fef08a', label: 'Pastel Yellow' },
   { value: '#bbf7d0', label: 'Pastel Green' },
@@ -23,17 +24,17 @@ export const PASTEL_COLORS: ColorOption[] = [
   { value: '#e9d5ff', label: 'Pastel Purple' },
   { value: '#fbcfe8', label: 'Pastel Pink' },
   { value: '#fed7aa', label: 'Pastel Orange' },
-  { value: '#334155', label: 'Slate Dark', isDarkText: false },
+  { value: '#1e293b', label: 'Slate Dark', isDarkText: false },
 ];
 
 export const STROKE_COLORS: ColorOption[] = [
+  { value: '#1e293b', label: 'Black / Dark' },
   { value: '#6366f1', label: 'Indigo' },
   { value: '#3b82f6', label: 'Blue' },
   { value: '#10b981', label: 'Emerald' },
   { value: '#f59e0b', label: 'Amber' },
   { value: '#ef4444', label: 'Rose' },
   { value: '#8b5cf6', label: 'Purple' },
-  { value: '#94a3b8', label: 'Muted Slate' },
   { value: '#ffffff', label: 'White' },
 ];
 
@@ -52,6 +53,10 @@ export interface SelectedObjectState {
   fill?: string;
   stroke?: string;
   strokeWidth?: number;
+  strokeDashArray?: number[] | null;
+  fontSize?: number;
+  fontFamily?: string;
+  textAlign?: string;
   opacity?: number;
   left: number;
   top: number;

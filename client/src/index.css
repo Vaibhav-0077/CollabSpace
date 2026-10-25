@@ -278,14 +278,13 @@ input, textarea {
   position: absolute;
   z-index: 25;
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 6px;
-  padding: 6px 8px;
-  border-radius: var(--radius-md);
+  padding: 8px 10px;
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-context);
-  transform: translate(-50%, -100%);
-  margin-top: -14px;
   animation: contextFadeIn 0.15s ease-out;
+  user-select: none;
 }
 
 @keyframes contextFadeIn {
@@ -297,6 +296,123 @@ input, textarea {
     opacity: 1;
     transform: translate(-50%, -100%);
   }
+}
+
+.contextual-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.contextual-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin-right: 2px;
+}
+
+/* Segmented Buttons Group (Excalidraw & Modern Tooling Style) */
+.segmented-group {
+  display: inline-flex;
+  align-items: center;
+  background: var(--bg-hover);
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  gap: 2px;
+}
+
+.segmented-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 3px 7px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 4px;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+.segmented-btn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.segmented-btn.active {
+  color: #ffffff;
+  background: var(--accent-primary);
+  font-weight: 600;
+  box-shadow: 0 1px 4px var(--accent-glow);
+}
+
+/* Stroke Line Thickness Indicators */
+.stroke-preview-line {
+  display: inline-block;
+  width: 12px;
+  background: currentColor;
+  border-radius: 1px;
+}
+
+.stroke-preview-line.line-thin {
+  height: 1px;
+}
+
+.stroke-preview-line.line-medium {
+  height: 2px;
+}
+
+.stroke-preview-line.line-bold {
+  height: 3.5px;
+}
+
+/* Stroke Style Indicators (Solid, Dashed, Dotted) */
+.stroke-style-preview {
+  display: inline-block;
+  width: 14px;
+}
+
+.stroke-style-preview.style-solid {
+  height: 2px;
+  background: currentColor;
+  border-radius: 1px;
+}
+
+.stroke-style-preview.style-dashed {
+  height: 0px;
+  border-top: 2px dashed currentColor;
+}
+
+.stroke-style-preview.style-dotted {
+  height: 0px;
+  border-top: 2px dotted currentColor;
+}
+
+/* Font Family Previews */
+.font-preview-sans {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 600;
+}
+
+.font-preview-casual {
+  font-family: 'Caveat', cursive;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.font-preview-mono {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
 }
 
 .color-swatch-btn {

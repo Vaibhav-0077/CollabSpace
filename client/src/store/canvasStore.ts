@@ -86,8 +86,8 @@ export const useCanvasStore = create<CanvasStoreState>((set) => {
 
   return {
     activeTool: 'select',
-    selectedFill: '#fef08a',
-    selectedStroke: '#6366f1',
+    selectedFill: 'transparent',
+    selectedStroke: '#1e293b',
     strokeWidth: 2,
     zoom: 1.0,
     theme: savedTheme,
