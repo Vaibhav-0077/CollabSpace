@@ -10,6 +10,7 @@ import {
   Type, 
   MoveRight, 
   Sparkles, 
+  LayoutGrid,
   Undo2, 
   Redo2 
 } from 'lucide-react';
@@ -25,6 +26,7 @@ interface FloatingDockProps {
   onAddArrow: () => void;
   onUndo: () => void;
   onRedo: () => void;
+  onTidyUp?: () => void;
 }
 
 export const FloatingDock: React.FC<FloatingDockProps> = ({
@@ -36,6 +38,7 @@ export const FloatingDock: React.FC<FloatingDockProps> = ({
   onAddArrow,
   onUndo,
   onRedo,
+  onTidyUp,
 }) => {
   const { 
     activeTool, 
@@ -148,10 +151,24 @@ export const FloatingDock: React.FC<FloatingDockProps> = ({
         aria-label="Arrow"
       >
         <MoveRight size={18} />
-        <span className="tool-tooltip">Connector <kbd>A</kbd></span>
+        <span className="tool-tooltip">Magnetic Connector <kbd>A</kbd></span>
       </button>
 
       <div className="dock-divider" />
+
+      {/* Tidy Up Auto-Alignment */}
+      {onTidyUp && (
+        <button
+          type="button"
+          className="dock-tool-btn"
+          style={{ color: '#38bdf8' }}
+          onClick={onTidyUp}
+          aria-label="Tidy Up Layout"
+        >
+          <LayoutGrid size={18} />
+          <span className="tool-tooltip">Tidy Up Layout</span>
+        </button>
+      )}
 
       {/* AI Superpower */}
       <button

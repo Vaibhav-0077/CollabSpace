@@ -1,5 +1,5 @@
 import React from 'react';
-import { Trash2, Copy } from 'lucide-react';
+import { Trash2, Copy, LayoutGrid } from 'lucide-react';
 import { useCanvasStore } from '../../store/canvasStore';
 import { PASTEL_COLORS, STROKE_COLORS } from '../../types/canvas';
 
@@ -8,6 +8,7 @@ interface ContextualToolbarProps {
   onChangeStroke: (color: string) => void;
   onDuplicate: () => void;
   onDelete: () => void;
+  onTidyUp?: () => void;
 }
 
 export const ContextualToolbar: React.FC<ContextualToolbarProps> = ({
@@ -15,6 +16,7 @@ export const ContextualToolbar: React.FC<ContextualToolbarProps> = ({
   onChangeStroke,
   onDuplicate,
   onDelete,
+  onTidyUp,
 }) => {
   const selectedObject = useCanvasStore((state) => state.selectedObject);
 
@@ -63,6 +65,19 @@ export const ContextualToolbar: React.FC<ContextualToolbarProps> = ({
       </div>
 
       <div className="dock-divider" style={{ height: '18px' }} />
+
+      {/* Tidy Up Auto-Align Button */}
+      {onTidyUp && (
+        <button
+          type="button"
+          className="dock-tool-btn"
+          style={{ width: '30px', height: '30px', color: 'var(--accent-light)' }}
+          onClick={onTidyUp}
+          title="Tidy Up & Auto-Align"
+        >
+          <LayoutGrid size={15} />
+        </button>
+      )}
 
       {/* Duplicate & Delete Buttons */}
       <button
