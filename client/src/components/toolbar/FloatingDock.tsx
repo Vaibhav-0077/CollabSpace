@@ -18,24 +18,18 @@ import { useCanvasStore } from '../../store/canvasStore';
 import type { ToolType } from '../../types/canvas';
 
 interface FloatingDockProps {
-  onAddRectangle: () => void;
-  onAddCircle: () => void;
-  onAddDiamond: () => void;
-  onAddStickyNote: () => void;
-  onAddText: () => void;
-  onAddArrow: () => void;
+  onAddRectangle?: () => void;
+  onAddCircle?: () => void;
+  onAddDiamond?: () => void;
+  onAddStickyNote?: () => void;
+  onAddText?: () => void;
+  onAddArrow?: () => void;
   onUndo: () => void;
   onRedo: () => void;
   onTidyUp?: () => void;
 }
 
 export const FloatingDock: React.FC<FloatingDockProps> = ({
-  onAddRectangle,
-  onAddCircle,
-  onAddDiamond,
-  onAddStickyNote,
-  onAddText,
-  onAddArrow,
   onUndo,
   onRedo,
   onTidyUp,
@@ -50,12 +44,6 @@ export const FloatingDock: React.FC<FloatingDockProps> = ({
 
   const handleToolSelect = (tool: ToolType) => {
     setActiveTool(tool);
-    if (tool === 'rectangle') onAddRectangle();
-    if (tool === 'circle') onAddCircle();
-    if (tool === 'diamond') onAddDiamond();
-    if (tool === 'sticky') onAddStickyNote();
-    if (tool === 'text') onAddText();
-    if (tool === 'arrow') onAddArrow();
   };
 
   return (
@@ -86,7 +74,7 @@ export const FloatingDock: React.FC<FloatingDockProps> = ({
       {/* Primitive Shapes */}
       <button
         type="button"
-        className="dock-tool-btn"
+        className={`dock-tool-btn ${activeTool === 'rectangle' ? 'active' : ''}`}
         onClick={() => handleToolSelect('rectangle')}
         aria-label="Rectangle"
       >
@@ -96,7 +84,7 @@ export const FloatingDock: React.FC<FloatingDockProps> = ({
 
       <button
         type="button"
-        className="dock-tool-btn"
+        className={`dock-tool-btn ${activeTool === 'circle' ? 'active' : ''}`}
         onClick={() => handleToolSelect('circle')}
         aria-label="Circle"
       >
@@ -106,7 +94,7 @@ export const FloatingDock: React.FC<FloatingDockProps> = ({
 
       <button
         type="button"
-        className="dock-tool-btn"
+        className={`dock-tool-btn ${activeTool === 'diamond' ? 'active' : ''}`}
         onClick={() => handleToolSelect('diamond')}
         aria-label="Diamond"
       >
@@ -116,7 +104,7 @@ export const FloatingDock: React.FC<FloatingDockProps> = ({
 
       <button
         type="button"
-        className="dock-tool-btn"
+        className={`dock-tool-btn ${activeTool === 'sticky' ? 'active' : ''}`}
         onClick={() => handleToolSelect('sticky')}
         aria-label="Sticky Note"
       >
@@ -136,7 +124,7 @@ export const FloatingDock: React.FC<FloatingDockProps> = ({
 
       <button
         type="button"
-        className="dock-tool-btn"
+        className={`dock-tool-btn ${activeTool === 'text' ? 'active' : ''}`}
         onClick={() => handleToolSelect('text')}
         aria-label="Text"
       >
@@ -146,7 +134,7 @@ export const FloatingDock: React.FC<FloatingDockProps> = ({
 
       <button
         type="button"
-        className="dock-tool-btn"
+        className={`dock-tool-btn ${activeTool === 'arrow' ? 'active' : ''}`}
         onClick={() => handleToolSelect('arrow')}
         aria-label="Arrow"
       >
