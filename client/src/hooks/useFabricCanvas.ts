@@ -5,8 +5,8 @@ import {
   Circle, 
   Polygon, 
   Textbox, 
-  Line, 
   Group, 
+  Line,
   Point, 
   PencilBrush, 
   FabricObject,
@@ -17,6 +17,16 @@ import {
 import { useCanvasStore } from '../store/canvasStore';
 import { socketService } from '../services/socketService';
 import { nanoid } from 'nanoid';
+import { handleObjectSnapping, clearGuidelines } from '../utils/snapping';
+import { 
+  createSmartConnector, 
+  updateAttachedConnectors, 
+  findNearestAnchor, 
+  attachArrowHead,
+  getShapeAnchors,
+  type AnchorType 
+} from '../utils/connectors';
+import { tidyUpCanvasObjects } from '../utils/tidyUp';
 
 // Customize Fabric defaults for an ultra-premium feel
 FabricObject.prototype.set({
@@ -216,6 +226,7 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     };
 
     const handleMouseUp = () => {
+      clearGuidelines(canvas);
       if (isPanningRef.current) {
         isPanningRef.current = false;
         canvas.selection = activeTool === 'select';
@@ -260,11 +271,27 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
       });
     };
 
-    // Moving event (relay live transform to collaborators)
+    // Moving event (magnetic snapping, dynamic connectors, and real-time sync)
     const handleObjectMoving = (opt: any) => {
       const obj = opt.target;
       if (!obj || isRemoteMutationRef.current) return;
 
+      // 1. Magnetic Snapping & Alignment Guides
+      if (obj.type !== 'line' && !obj.isConnector) {
+        const snap = handleObjectSnapping(obj, canvas);
+        if (snap.snappedLeft !== undefined) {
+          obj.set({ left: snap.snappedLeft });
+        }
+        if (snap.snappedTop !== undefined) {
+          obj.set({ top: snap.snappedTop });
+        }
+        obj.setCoords();
+      }
+
+      // 2. Dynamic Connector lines follow shape
+      updateAttachedConnectors(obj, canvas);
+
+      // 3. Real-time stream to collaborators
       const now = Date.now();
       if (now - transformThrottleRef.current > 30) {
         socketService.emitObjectTransforming({
@@ -296,17 +323,31 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
 
     // Object mutation sync
     canvas.on('object:modified', (e) => {
+      clearGuidelines(canvas);
       saveHistory();
       if (!isRemoteMutationRef.current && e.target) {
-        const serialized = e.target.toObject(['id', 'name', 'shadow', 'rx', 'ry']);
+        const serialized = (e.target as any).toObject(['id', 'name', 'shadow', 'rx', 'ry', 'isConnector', 'fromId', 'toId', 'fromAnchor', 'toAnchor']);
         socketService.emitObjectModified(serialized);
+
+        // Also broadcast updated coordinates for any attached connectors
+        const shapeId = (e.target as any).id;
+        if (shapeId) {
+          const connectors = canvas.getObjects().filter(
+            (obj: any) => obj.isConnector && (obj.fromId === shapeId || obj.toId === shapeId)
+          );
+          connectors.forEach((conn) => {
+            socketService.emitObjectModified(
+              (conn as any).toObject(['id', 'name', 'isConnector', 'fromId', 'toId', 'fromAnchor', 'toAnchor'])
+            );
+          });
+        }
       }
     });
 
     canvas.on('object:added', (e) => {
       setHasObjects(canvas.getObjects().length > 0);
       if (!isRemoteMutationRef.current && e.target && (e.target as any).id) {
-        const serialized = e.target.toObject(['id', 'name', 'shadow', 'rx', 'ry']);
+        const serialized = (e.target as any).toObject(['id', 'name', 'shadow', 'rx', 'ry', 'isConnector', 'fromId', 'toId', 'fromAnchor', 'toAnchor']);
         socketService.emitObjectAdded(serialized);
       }
     });
@@ -332,6 +373,7 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
           ...(data.angle !== undefined ? { angle: data.angle } : {}),
         });
         target.setCoords();
+        updateAttachedConnectors(target, canvas);
         canvas.requestRenderAll();
         isRemoteMutationRef.current = false;
       }
@@ -343,9 +385,16 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
       if (existing) {
         existing.set(objData);
         existing.setCoords();
+        if ((objData as any).isConnector) {
+          attachArrowHead(existing as Line);
+        }
+        updateAttachedConnectors(existing, canvas);
       } else {
         const [enlivened] = await util.enlivenObjects([objData]);
         if (enlivened) {
+          if ((objData as any).isConnector) {
+            attachArrowHead(enlivened as Line);
+          }
           canvas.add(enlivened as FabricObject);
         }
       }
@@ -360,6 +409,9 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
       isRemoteMutationRef.current = true;
       const [enlivened] = await util.enlivenObjects([objData]);
       if (enlivened) {
+        if ((objData as any).isConnector) {
+          attachArrowHead(enlivened as Line);
+        }
         canvas.add(enlivened as FabricObject);
         canvas.requestRenderAll();
       }
@@ -384,6 +436,9 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
       const list = Object.values(objects);
       const enlivened = await util.enlivenObjects(list);
       enlivened.forEach((item) => {
+        if ((item as any).isConnector) {
+          attachArrowHead(item as Line);
+        }
         canvas.add(item as FabricObject);
       });
       canvas.requestRenderAll();
@@ -650,18 +705,72 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     const canvas = canvasRef.current;
     if (!canvas) return;
     const { x, y } = getCanvasCenter();
-    const line = new Line([x - 80, y, x + 80, y], {
-      id: nanoid(8),
+
+    // Check if an object is actively selected to anchor from
+    const active = canvas.getActiveObject();
+    let startX = x - 90;
+    let startY = y;
+    let fromId: string | undefined;
+    let fromAnchor: AnchorType | undefined;
+
+    if (active && (active as any).id && !(active as any).isConnector) {
+      fromId = (active as any).id;
+      const anchors = getShapeAnchors(active);
+      const rightAnchor = anchors.find((a) => a.type === 'right') || anchors[1];
+      startX = rightAnchor.x;
+      startY = rightAnchor.y;
+      fromAnchor = 'right';
+    } else {
+      const nearStart = findNearestAnchor(x - 90, y, canvas);
+      if (nearStart) {
+        startX = nearStart.anchor.x;
+        startY = nearStart.anchor.y;
+        fromId = nearStart.shapeId;
+        fromAnchor = nearStart.anchor.type;
+      }
+    }
+
+    const nearEnd = findNearestAnchor(startX + 150, startY, canvas, fromId);
+    const endX = nearEnd ? nearEnd.anchor.x : startX + 150;
+    const endY = nearEnd ? nearEnd.anchor.y : startY;
+
+    const connector = createSmartConnector({
+      x1: startX,
+      y1: startY,
+      x2: endX,
+      y2: endY,
+      fromId,
+      toId: nearEnd?.shapeId,
+      fromAnchor,
+      toAnchor: nearEnd?.anchor.type,
       stroke: selectedStroke,
       strokeWidth: strokeWidth + 1,
-      hasControls: true,
-    } as any);
-    canvas.add(line);
-    canvas.setActiveObject(line);
+    });
+
+    canvas.add(connector);
+    canvas.setActiveObject(connector);
     canvas.requestRenderAll();
     saveHistory();
+    socketService.emitObjectAdded((connector as any).toObject(['id', 'name', 'isConnector', 'fromId', 'toId', 'fromAnchor', 'toAnchor']));
     setActiveTool('select');
   }, [selectedStroke, strokeWidth, getCanvasCenter, saveHistory, setActiveTool]);
+
+  // One-click Tidy Up & Auto-alignment
+  const tidyUp = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    tidyUpCanvasObjects(canvas, (obj) => {
+      socketService.emitObjectModified((obj as any).toObject(['id', 'name', 'shadow', 'rx', 'ry']));
+    });
+    // Emit modified for any attached connectors as well
+    const connectors = canvas.getObjects().filter((o: any) => o.isConnector);
+    connectors.forEach((conn) => {
+      socketService.emitObjectModified(
+        (conn as any).toObject(['id', 'name', 'isConnector', 'fromId', 'toId', 'fromAnchor', 'toAnchor'])
+      );
+    });
+    saveHistory();
+  }, [saveHistory]);
 
   // Contextual actions
   const changeSelectedFill = useCallback((color: string) => {
@@ -699,6 +808,21 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     const active = canvas.getActiveObject();
     if (active) {
       const objId = (active as any).id;
+      // Detach any connectors bound to this shape so no orphaned references remain
+      const attachedConnectors = canvas.getObjects().filter(
+        (o: any) => o.isConnector && (o.fromId === objId || o.toId === objId)
+      );
+      attachedConnectors.forEach((c: any) => {
+        if (c.fromId === objId) {
+          c.fromId = undefined;
+          c.fromAnchor = undefined;
+        }
+        if (c.toId === objId) {
+          c.toId = undefined;
+          c.toAnchor = undefined;
+        }
+      });
+
       canvas.remove(active);
       canvas.discardActiveObject();
       canvas.requestRenderAll();
@@ -808,5 +932,6 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     redo,
     exportPNG,
     exportJSON,
+    tidyUp,
   };
 }
