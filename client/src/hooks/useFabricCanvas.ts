@@ -51,6 +51,7 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     selectedFill,
     selectedStroke,
     strokeWidth,
+    setStrokeWidth,
     setZoom,
     setActiveTool,
     setUndoRedoState,
@@ -76,6 +77,22 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
   const isPanningRef = useRef<boolean>(false);
   const lastPanPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const isSpacePressedRef = useRef<boolean>(false);
+
+  // Active tool & drawing style refs for fresh access inside event callbacks
+  const activeToolRef = useRef(activeTool);
+  activeToolRef.current = activeTool;
+  const selectedFillRef = useRef(selectedFill);
+  selectedFillRef.current = selectedFill;
+  const selectedStrokeRef = useRef(selectedStroke);
+  selectedStrokeRef.current = selectedStroke;
+  const strokeWidthRef = useRef(strokeWidth);
+  strokeWidthRef.current = strokeWidth;
+
+  // Interactive Drag-to-Create Shape Refs (Excalidraw UX)
+  const isDrawingShapeRef = useRef<boolean>(false);
+  const shapeStartPointRef = useRef<{ x: number; y: number } | null>(null);
+  const currentDrawingObjectRef = useRef<FabricObject | null>(null);
+  const updateSelectionStateRef = useRef<() => void>(() => {});
 
   // Helper to record history snapshot
   const saveHistory = useCallback(() => {
@@ -192,19 +209,145 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     };
 
     // Pan handling
+    // 1. Mouse Down: Pan or start interactive shape swipe/drag
     const handleMouseDown = (opt: any) => {
       const e = opt.e;
-      if (isSpacePressedRef.current || e.button === 1 || activeTool === 'hand') {
+      if (isSpacePressedRef.current || e.button === 1 || activeToolRef.current === 'hand') {
         isPanningRef.current = true;
         canvas.selection = false;
         lastPanPosRef.current = { x: e.clientX, y: e.clientY };
         canvas.defaultCursor = 'grabbing';
         canvas.setCursor('grabbing');
+        return;
+      }
+
+      if (e.button !== 0) return; // Left mouse button only
+
+      const currentTool = activeToolRef.current;
+      const point = canvas.getScenePoint ? canvas.getScenePoint(opt.e) : (canvas as any).getPointer(opt.e);
+      if (!point) return;
+
+      // Excalidraw Text Tool: Click to place black editable text directly at point
+      if (currentTool === 'text') {
+        const textbox = new Textbox('Text', {
+          id: nanoid(8),
+          left: point.x,
+          top: point.y,
+          width: 140,
+          fontSize: 18,
+          fontFamily: 'Plus Jakarta Sans',
+          fill: '#1e293b', // Black text by default
+          editable: true,
+          cursorColor: '#6366f1',
+        } as any);
+        canvas.add(textbox);
+        canvas.setActiveObject(textbox);
+        textbox.enterEditing();
+        textbox.selectAll();
+        canvas.requestRenderAll();
+        saveHistory();
+        socketService.emitObjectAdded((textbox as any).toObject(['id', 'name', 'shadow', 'rx', 'ry']));
+        setActiveTool('select');
+        return;
+      }
+
+      // Excalidraw Shape Drawing: Click on screen & swipe/drag to create
+      if (['rectangle', 'circle', 'diamond', 'sticky', 'arrow'].includes(currentTool)) {
+        isDrawingShapeRef.current = true;
+        shapeStartPointRef.current = { x: point.x, y: point.y };
+
+        const fill = selectedFillRef.current; // 'transparent' by default
+        const stroke = selectedStrokeRef.current; // '#1e293b' black by default
+        const width = strokeWidthRef.current || 2;
+
+        let shape: FabricObject | null = null;
+        if (currentTool === 'rectangle') {
+          shape = new Rect({
+            id: nanoid(8),
+            left: point.x,
+            top: point.y,
+            width: 1,
+            height: 1,
+            fill: fill,
+            stroke: stroke,
+            strokeWidth: width,
+            rx: 6,
+            ry: 6,
+            strokeUniform: true,
+            selectable: false,
+            evented: false,
+          } as any);
+        } else if (currentTool === 'circle') {
+          shape = new Circle({
+            id: nanoid(8),
+            left: point.x,
+            top: point.y,
+            radius: 1,
+            fill: fill,
+            stroke: stroke,
+            strokeWidth: width,
+            strokeUniform: true,
+            selectable: false,
+            evented: false,
+          } as any);
+        } else if (currentTool === 'diamond') {
+          shape = new Polygon(
+            [
+              { x: 0, y: 0 },
+              { x: 0, y: 0 },
+              { x: 0, y: 0 },
+              { x: 0, y: 0 },
+            ],
+            {
+              id: nanoid(8),
+              left: point.x,
+              top: point.y,
+              fill: fill,
+              stroke: stroke,
+              strokeWidth: width,
+              strokeUniform: true,
+              selectable: false,
+              evented: false,
+            } as any
+          );
+        } else if (currentTool === 'sticky') {
+          shape = new Rect({
+            id: nanoid(8),
+            left: point.x,
+            top: point.y,
+            width: 1,
+            height: 1,
+            fill: fill === 'transparent' ? '#fef08a' : fill,
+            stroke: '#eab308',
+            strokeWidth: 1,
+            rx: 6,
+            ry: 6,
+            selectable: false,
+            evented: false,
+          } as any);
+        } else if (currentTool === 'arrow') {
+          shape = createSmartConnector({
+            x1: point.x,
+            y1: point.y,
+            x2: point.x,
+            y2: point.y,
+            stroke: stroke,
+            strokeWidth: width + 1,
+          });
+          shape.set({ selectable: false, evented: false });
+        }
+
+        if (shape) {
+          canvas.add(shape);
+          currentDrawingObjectRef.current = shape;
+          canvas.requestRenderAll();
+        }
       }
     };
 
+    // 2. Mouse Move: Pan, drag-resize shape ("swipe"), and cursor broadcast
     const handleMouseMove = (opt: any) => {
-      // 1. Pan movement
+      // Pan movement
       if (isPanningRef.current) {
         const e = opt.e;
         const deltaX = e.clientX - lastPanPosRef.current.x;
@@ -214,7 +357,42 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
         setCanvasVpt([...canvas.viewportTransform]);
       }
 
-      // 2. Throttled Real-Time Cursor streaming (world coordinates)
+      // Interactive Shape Drag Sizing ("Swipe screen to size shape")
+      if (isDrawingShapeRef.current && currentDrawingObjectRef.current && shapeStartPointRef.current) {
+        const point = canvas.getScenePoint ? canvas.getScenePoint(opt.e) : (canvas as any).getPointer(opt.e);
+        if (point) {
+          const start = shapeStartPointRef.current;
+          const currentObj = currentDrawingObjectRef.current;
+          const tool = activeToolRef.current;
+
+          const left = Math.min(start.x, point.x);
+          const top = Math.min(start.y, point.y);
+          const w = Math.max(2, Math.abs(point.x - start.x));
+          const h = Math.max(2, Math.abs(point.y - start.y));
+
+          if (tool === 'rectangle' || tool === 'sticky') {
+            currentObj.set({ left, top, width: w, height: h });
+          } else if (tool === 'circle') {
+            const radius = Math.max(w, h) / 2;
+            currentObj.set({ left, top, radius });
+          } else if (tool === 'diamond') {
+            const pts = [
+              { x: w / 2, y: 0 },
+              { x: w, y: h / 2 },
+              { x: w / 2, y: h },
+              { x: 0, y: h / 2 },
+            ];
+            (currentObj as any).set({ left, top, width: w, height: h, points: pts });
+          } else if (tool === 'arrow') {
+            (currentObj as Line).set({ x1: start.x, y1: start.y, x2: point.x, y2: point.y });
+          }
+
+          currentObj.setCoords();
+          canvas.requestRenderAll();
+        }
+      }
+
+      // Throttled Real-Time Cursor streaming (world coordinates)
       const now = Date.now();
       if (now - cursorThrottleRef.current > 30) {
         const point = canvas.getScenePoint ? canvas.getScenePoint(opt.e) : (canvas as any).getPointer(opt.e);
@@ -225,14 +403,152 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
       }
     };
 
+    // 3. Mouse Up: Commit created shape, make selectable, and switch to select tool
     const handleMouseUp = () => {
       clearGuidelines(canvas);
       if (isPanningRef.current) {
         isPanningRef.current = false;
-        canvas.selection = activeTool === 'select';
-        canvas.defaultCursor = activeTool === 'hand' ? 'grab' : 'default';
+        canvas.selection = activeToolRef.current === 'select';
+        canvas.defaultCursor = activeToolRef.current === 'hand' ? 'grab' : 'default';
         canvas.setCursor(canvas.defaultCursor);
       }
+
+      // Finalize interactive shape creation
+      if (isDrawingShapeRef.current && currentDrawingObjectRef.current && shapeStartPointRef.current) {
+        const currentObj = currentDrawingObjectRef.current;
+        const start = shapeStartPointRef.current;
+        const tool = activeToolRef.current;
+
+        const bound = currentObj.getBoundingRect();
+        const isJustClick =
+          tool !== 'arrow'
+            ? bound.width < 12 || bound.height < 12
+            : Math.hypot((currentObj as any).x2 - (currentObj as any).x1, (currentObj as any).y2 - (currentObj as any).y1) < 12;
+
+        if (isJustClick) {
+          if (tool === 'rectangle') {
+            currentObj.set({ left: start.x, top: start.y, width: 140, height: 90 });
+          } else if (tool === 'circle') {
+            currentObj.set({ left: start.x, top: start.y, radius: 45 });
+          } else if (tool === 'diamond') {
+            const size = 110;
+            const pts = [
+              { x: size / 2, y: 0 },
+              { x: size, y: size / 2 },
+              { x: size / 2, y: size },
+              { x: 0, y: size / 2 },
+            ];
+            (currentObj as any).set({ left: start.x, top: start.y, width: size, height: size, points: pts });
+          } else if (tool === 'sticky') {
+            currentObj.set({ left: start.x, top: start.y, width: 160, height: 160 });
+          } else if (tool === 'arrow') {
+            (currentObj as Line).set({ x1: start.x, y1: start.y, x2: start.x + 130, y2: start.y });
+          }
+        }
+
+        currentObj.set({ selectable: true, evented: true });
+        currentObj.setCoords();
+
+        if (tool === 'sticky') {
+          const finalLeft = currentObj.left;
+          const finalTop = currentObj.top;
+          const finalWidth = (currentObj as any).width || 160;
+          const finalHeight = (currentObj as any).height || 160;
+          canvas.remove(currentObj);
+
+          const bg = new Rect({
+            width: finalWidth,
+            height: finalHeight,
+            fill: selectedFillRef.current === 'transparent' ? '#fef08a' : selectedFillRef.current,
+            rx: 6,
+            ry: 6,
+            shadow: new Shadow({ color: 'rgba(0,0,0,0.15)', blur: 12, offsetX: 0, offsetY: 4 }),
+          });
+          const tb = new Textbox('Idea or task...', {
+            left: 12,
+            top: 12,
+            width: finalWidth - 24,
+            fontSize: 15,
+            fontFamily: 'Plus Jakarta Sans',
+            fill: '#1e293b', // Black text
+            editable: true,
+            cursorColor: '#6366f1',
+          });
+          const stickyGroup = new Group([bg, tb], {
+            id: nanoid(8),
+            left: finalLeft,
+            top: finalTop,
+            subTargetCheck: true,
+          } as any);
+          canvas.add(stickyGroup);
+          canvas.setActiveObject(stickyGroup);
+          saveHistory();
+          socketService.emitObjectAdded((stickyGroup as any).toObject(['id', 'name', 'shadow', 'rx', 'ry']));
+        } else {
+          canvas.setActiveObject(currentObj);
+          saveHistory();
+          socketService.emitObjectAdded(
+            (currentObj as any).toObject(['id', 'name', 'shadow', 'rx', 'ry', 'isConnector', 'fromId', 'toId', 'fromAnchor', 'toAnchor'])
+          );
+        }
+
+        canvas.requestRenderAll();
+        setHasObjects(canvas.getObjects().length > 0);
+
+        // Reset drawing state & return to select tool (Excalidraw UX)
+        isDrawingShapeRef.current = false;
+        shapeStartPointRef.current = null;
+        currentDrawingObjectRef.current = null;
+        setActiveTool('select');
+      }
+    };
+
+    // 4. Double Click: Add or edit black text directly in shape or on canvas
+    const handleDoubleClick = (opt: any) => {
+      const target = opt.target;
+      const point = canvas.getScenePoint ? canvas.getScenePoint(opt.e) : (canvas as any).getPointer(opt.e);
+      if (!point) return;
+
+      if (target && target.type === 'textbox') {
+        target.enterEditing();
+        return;
+      }
+
+      if (target && target.type === 'group') {
+        const textInGroup = (target as Group).getObjects().find((o) => o.type === 'textbox');
+        if (textInGroup) {
+          (textInGroup as Textbox).enterEditing();
+          return;
+        }
+      }
+
+      let posX = point.x - 60;
+      let posY = point.y - 12;
+
+      if (target && (target.type === 'rect' || target.type === 'circle' || target.type === 'polygon')) {
+        const bound = target.getBoundingRect();
+        posX = bound.left + bound.width / 2 - 50;
+        posY = bound.top + bound.height / 2 - 12;
+      }
+
+      const textbox = new Textbox('', {
+        id: nanoid(8),
+        left: posX,
+        top: posY,
+        width: 120,
+        fontSize: 16,
+        fontFamily: 'Plus Jakarta Sans',
+        fill: '#1e293b', // Black text by default
+        editable: true,
+        cursorColor: '#6366f1',
+      } as any);
+
+      canvas.add(textbox);
+      canvas.setActiveObject(textbox);
+      textbox.enterEditing();
+      canvas.requestRenderAll();
+      saveHistory();
+      socketService.emitObjectAdded((textbox as any).toObject(['id', 'name', 'shadow', 'rx', 'ry']));
     };
 
     // Selection changes & Ephemeral Locks
@@ -257,12 +573,38 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
       }
 
       const bound = activeObj.getBoundingRect();
+      let textObj: Textbox | undefined;
+      if (activeObj.type === 'textbox') {
+        textObj = activeObj as Textbox;
+      } else if (activeObj.type === 'group') {
+        textObj = (activeObj as Group).getObjects().find((o) => o.type === 'textbox') as Textbox | undefined;
+      }
+
+      let fillVal = activeObj.get('fill') as string;
+      let strokeVal = activeObj.get('stroke') as string;
+      let strokeWidthVal = activeObj.get('strokeWidth') as number;
+      let strokeDashVal = activeObj.get('strokeDashArray') as number[] | null;
+
+      if (activeObj.type === 'group') {
+        const bg = (activeObj as Group).getObjects()[0];
+        if (bg) {
+          fillVal = (bg.get('fill') as string) || fillVal;
+          strokeVal = (bg.get('stroke') as string) || strokeVal;
+          strokeWidthVal = (bg.get('strokeWidth') as number) ?? strokeWidthVal;
+          strokeDashVal = (bg.get('strokeDashArray') as number[] | null) ?? strokeDashVal;
+        }
+      }
+
       setSelectedObject({
         id: objId,
         type: activeObj.type,
-        fill: (activeObj.get('fill') as string) || '#ffffff',
-        stroke: (activeObj.get('stroke') as string) || '#6366f1',
-        strokeWidth: (activeObj.get('strokeWidth') as number) || 2,
+        fill: fillVal || (activeObj.type === 'textbox' ? '#1e293b' : 'transparent'),
+        stroke: strokeVal || '#1e293b',
+        strokeWidth: strokeWidthVal ?? 2,
+        strokeDashArray: strokeDashVal || null,
+        fontSize: textObj ? (textObj.fontSize || 18) : undefined,
+        fontFamily: textObj ? (textObj.fontFamily || 'Plus Jakarta Sans') : undefined,
+        textAlign: textObj ? (textObj.textAlign || 'left') : undefined,
         opacity: activeObj.get('opacity') || 1,
         left: bound.left + bound.width / 2,
         top: bound.top,
@@ -270,6 +612,7 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
         height: bound.height,
       });
     };
+    updateSelectionStateRef.current = updateSelectionState;
 
     // Moving event (magnetic snapping, dynamic connectors, and real-time sync)
     const handleObjectMoving = (opt: any) => {
@@ -310,6 +653,7 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     canvas.on('mouse:down', handleMouseDown);
     canvas.on('mouse:move', handleMouseMove);
     canvas.on('mouse:up', handleMouseUp);
+    canvas.on('mouse:dblclick', handleDoubleClick);
     canvas.on('object:moving', handleObjectMoving);
     canvas.on('selection:created', updateSelectionState);
     canvas.on('selection:updated', updateSelectionState);
@@ -476,19 +820,40 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
       }
       if ((e.key === 'Delete' || e.key === 'Backspace') && (e.target as HTMLElement).tagName !== 'INPUT') {
         const activeObj = canvas.getActiveObject();
-        if (activeObj) {
+        if (activeObj && !(activeObj as any).isEditing) {
           canvas.remove(activeObj);
           canvas.discardActiveObject();
           canvas.requestRenderAll();
           saveHistory();
         }
       }
+
+      // Excalidraw Single-Key Tool Shortcuts
+      const isInputFocused =
+        (e.target as HTMLElement).tagName === 'INPUT' ||
+        (e.target as HTMLElement).tagName === 'TEXTAREA' ||
+        ((canvas.getActiveObject() as any)?.isEditing);
+
+      if (!isInputFocused && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        const k = e.key.toLowerCase();
+        if (k === 'v') setActiveTool('select');
+        else if (k === 'h') setActiveTool('hand');
+        else if (k === 'r') setActiveTool('rectangle');
+        else if (k === 'o') setActiveTool('circle');
+        else if (k === 'd') setActiveTool('diamond');
+        else if (k === 's') setActiveTool('sticky');
+        else if (k === 'p') setActiveTool('pencil');
+        else if (k === 't') setActiveTool('text');
+        else if (k === 'a') setActiveTool('arrow');
+      }
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.code === 'Space') {
         isSpacePressedRef.current = false;
-        canvas.defaultCursor = activeTool === 'hand' ? 'grab' : 'default';
+        const currentTool = activeToolRef.current;
+        canvas.defaultCursor =
+          currentTool === 'hand' ? 'grab' : currentTool === 'select' ? 'default' : 'crosshair';
         canvas.setCursor(canvas.defaultCursor);
       }
     };
@@ -519,18 +884,24 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
         canvas.freeDrawingBrush.color = selectedStroke;
         canvas.freeDrawingBrush.width = strokeWidth;
       }
-    } else {
+      canvas.selection = false;
+      canvas.defaultCursor = 'crosshair';
+      canvas.setCursor('crosshair');
+    } else if (activeTool === 'hand') {
       canvas.isDrawingMode = false;
-    }
-
-    if (activeTool === 'hand') {
       canvas.selection = false;
       canvas.defaultCursor = 'grab';
       canvas.setCursor('grab');
+    } else if (['rectangle', 'circle', 'diamond', 'sticky', 'arrow', 'text'].includes(activeTool)) {
+      canvas.isDrawingMode = false;
+      canvas.selection = false;
+      canvas.defaultCursor = 'crosshair';
+      canvas.setCursor('crosshair');
     } else {
-      canvas.selection = activeTool === 'select';
-      canvas.defaultCursor = activeTool === 'pencil' ? 'crosshair' : 'default';
-      canvas.setCursor(canvas.defaultCursor);
+      canvas.isDrawingMode = false;
+      canvas.selection = true;
+      canvas.defaultCursor = 'default';
+      canvas.setCursor('default');
     }
   }, [activeTool, selectedStroke, strokeWidth]);
 
@@ -559,19 +930,15 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
       fill: selectedFill,
       stroke: selectedStroke,
       strokeWidth: strokeWidth,
-      rx: 10,
-      ry: 10,
-      shadow: {
-        color: 'rgba(0,0,0,0.15)',
-        blur: 12,
-        offsetX: 0,
-        offsetY: 4
-      }
+      rx: 6,
+      ry: 6,
+      strokeUniform: true,
     } as any);
     canvas.add(rect);
     canvas.setActiveObject(rect);
     canvas.requestRenderAll();
     saveHistory();
+    socketService.emitObjectAdded((rect as any).toObject(['id', 'name', 'shadow', 'rx', 'ry']));
     setActiveTool('select');
   }, [selectedFill, selectedStroke, strokeWidth, getCanvasCenter, saveHistory, setActiveTool]);
 
@@ -587,17 +954,13 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
       fill: selectedFill,
       stroke: selectedStroke,
       strokeWidth: strokeWidth,
-      shadow: {
-        color: 'rgba(0,0,0,0.15)',
-        blur: 12,
-        offsetX: 0,
-        offsetY: 4
-      }
+      strokeUniform: true,
     } as any);
     canvas.add(circle);
     canvas.setActiveObject(circle);
     canvas.requestRenderAll();
     saveHistory();
+    socketService.emitObjectAdded((circle as any).toObject(['id', 'name', 'shadow', 'rx', 'ry']));
     setActiveTool('select');
   }, [selectedFill, selectedStroke, strokeWidth, getCanvasCenter, saveHistory, setActiveTool]);
 
@@ -619,17 +982,13 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
       fill: selectedFill,
       stroke: selectedStroke,
       strokeWidth: strokeWidth,
-      shadow: {
-        color: 'rgba(0,0,0,0.15)',
-        blur: 12,
-        offsetX: 0,
-        offsetY: 4
-      }
+      strokeUniform: true,
     } as any);
     canvas.add(diamond);
     canvas.setActiveObject(diamond);
     canvas.requestRenderAll();
     saveHistory();
+    socketService.emitObjectAdded((diamond as any).toObject(['id', 'name', 'shadow', 'rx', 'ry']));
     setActiveTool('select');
   }, [selectedFill, selectedStroke, strokeWidth, getCanvasCenter, saveHistory, setActiveTool]);
 
@@ -643,7 +1002,7 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     const background = new Rect({
       width,
       height,
-      fill: selectedFill === '#ffffff' ? '#fef08a' : selectedFill,
+      fill: selectedFill === 'transparent' ? '#fef08a' : selectedFill,
       rx: 6,
       ry: 6,
       shadow: new Shadow({
@@ -676,6 +1035,7 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     canvas.setActiveObject(stickyGroup);
     canvas.requestRenderAll();
     saveHistory();
+    socketService.emitObjectAdded((stickyGroup as any).toObject(['id', 'name', 'shadow', 'rx', 'ry']));
     setActiveTool('select');
   }, [selectedFill, getCanvasCenter, saveHistory, setActiveTool]);
 
@@ -690,14 +1050,16 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
       width: 200,
       fontSize: 18,
       fontFamily: 'Plus Jakarta Sans',
-      fill: '#f8fafc',
+      fill: '#1e293b', // Black text by default!
       editable: true,
       cursorColor: '#6366f1',
     } as any);
     canvas.add(textbox);
     canvas.setActiveObject(textbox);
+    textbox.enterEditing();
     canvas.requestRenderAll();
     saveHistory();
+    socketService.emitObjectAdded((textbox as any).toObject(['id', 'name', 'shadow', 'rx', 'ry']));
     setActiveTool('select');
   }, [getCanvasCenter, saveHistory, setActiveTool]);
 
@@ -786,7 +1148,10 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
       }
       canvas.requestRenderAll();
       saveHistory();
-      socketService.emitObjectModified(active.toObject(['id', 'name', 'shadow', 'rx', 'ry']));
+      updateSelectionStateRef.current();
+      socketService.emitObjectModified(
+        (active as any).toObject(['id', 'name', 'shadow', 'rx', 'ry', 'strokeDashArray', 'strokeWidth', 'fontSize', 'fontFamily', 'textAlign', 'isConnector', 'fromId', 'toId', 'fromAnchor', 'toAnchor'])
+      );
     }
   }, [saveHistory]);
 
@@ -795,10 +1160,125 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     if (!canvas) return;
     const active = canvas.getActiveObject();
     if (active) {
-      active.set('stroke', color);
+      if (active.type === 'group') {
+        const bg = (active as Group).getObjects()[0];
+        if (bg) bg.set('stroke', color);
+      } else {
+        active.set('stroke', color);
+      }
       canvas.requestRenderAll();
       saveHistory();
-      socketService.emitObjectModified(active.toObject(['id', 'name', 'shadow', 'rx', 'ry']));
+      updateSelectionStateRef.current();
+      socketService.emitObjectModified(
+        (active as any).toObject(['id', 'name', 'shadow', 'rx', 'ry', 'strokeDashArray', 'strokeWidth', 'fontSize', 'fontFamily', 'textAlign', 'isConnector', 'fromId', 'toId', 'fromAnchor', 'toAnchor'])
+      );
+    }
+  }, [saveHistory]);
+
+  const changeSelectedStrokeWidth = useCallback((width: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const active = canvas.getActiveObject();
+    if (active) {
+      if (active.type === 'group') {
+        const bg = (active as Group).getObjects()[0];
+        if (bg) bg.set('strokeWidth', width);
+      } else {
+        active.set('strokeWidth', width);
+      }
+      active.setCoords();
+      canvas.requestRenderAll();
+      saveHistory();
+      setStrokeWidth(width);
+      updateSelectionStateRef.current();
+      socketService.emitObjectModified(
+        (active as any).toObject(['id', 'name', 'shadow', 'rx', 'ry', 'strokeDashArray', 'strokeWidth', 'isConnector', 'fromId', 'toId', 'fromAnchor', 'toAnchor'])
+      );
+    }
+  }, [saveHistory, setStrokeWidth]);
+
+  const changeSelectedStrokeStyle = useCallback((style: 'solid' | 'dashed' | 'dotted') => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const active = canvas.getActiveObject();
+    if (active) {
+      const dash = style === 'dashed' ? [8, 8] : style === 'dotted' ? [3, 4] : null;
+      if (active.type === 'group') {
+        const bg = (active as Group).getObjects()[0];
+        if (bg) bg.set('strokeDashArray', dash as any);
+      } else {
+        active.set('strokeDashArray', dash as any);
+      }
+      active.setCoords();
+      canvas.requestRenderAll();
+      saveHistory();
+      updateSelectionStateRef.current();
+      socketService.emitObjectModified(
+        (active as any).toObject(['id', 'name', 'shadow', 'rx', 'ry', 'strokeDashArray', 'strokeWidth', 'isConnector', 'fromId', 'toId', 'fromAnchor', 'toAnchor'])
+      );
+    }
+  }, [saveHistory]);
+
+  const changeSelectedFontSize = useCallback((size: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const active = canvas.getActiveObject();
+    if (active) {
+      if (active.type === 'textbox') {
+        (active as Textbox).set('fontSize', size);
+      } else if (active.type === 'group') {
+        const textInGroup = (active as Group).getObjects().find((o) => o.type === 'textbox');
+        if (textInGroup) (textInGroup as Textbox).set('fontSize', size);
+      }
+      active.setCoords();
+      canvas.requestRenderAll();
+      saveHistory();
+      updateSelectionStateRef.current();
+      socketService.emitObjectModified(
+        (active as any).toObject(['id', 'name', 'shadow', 'rx', 'ry', 'fontSize', 'fontFamily', 'textAlign'])
+      );
+    }
+  }, [saveHistory]);
+
+  const changeSelectedFontFamily = useCallback((family: string) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const active = canvas.getActiveObject();
+    if (active) {
+      if (active.type === 'textbox') {
+        (active as Textbox).set('fontFamily', family);
+      } else if (active.type === 'group') {
+        const textInGroup = (active as Group).getObjects().find((o) => o.type === 'textbox');
+        if (textInGroup) (textInGroup as Textbox).set('fontFamily', family);
+      }
+      active.setCoords();
+      canvas.requestRenderAll();
+      saveHistory();
+      updateSelectionStateRef.current();
+      socketService.emitObjectModified(
+        (active as any).toObject(['id', 'name', 'shadow', 'rx', 'ry', 'fontSize', 'fontFamily', 'textAlign'])
+      );
+    }
+  }, [saveHistory]);
+
+  const changeSelectedTextAlign = useCallback((align: 'left' | 'center' | 'right') => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const active = canvas.getActiveObject();
+    if (active) {
+      if (active.type === 'textbox') {
+        (active as Textbox).set('textAlign', align);
+      } else if (active.type === 'group') {
+        const textInGroup = (active as Group).getObjects().find((o) => o.type === 'textbox');
+        if (textInGroup) (textInGroup as Textbox).set('textAlign', align);
+      }
+      active.setCoords();
+      canvas.requestRenderAll();
+      saveHistory();
+      updateSelectionStateRef.current();
+      socketService.emitObjectModified(
+        (active as any).toObject(['id', 'name', 'shadow', 'rx', 'ry', 'fontSize', 'fontFamily', 'textAlign'])
+      );
     }
   }, [saveHistory]);
 
@@ -923,6 +1403,11 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     addArrow,
     changeSelectedFill,
     changeSelectedStroke,
+    changeSelectedStrokeWidth,
+    changeSelectedStrokeStyle,
+    changeSelectedFontSize,
+    changeSelectedFontFamily,
+    changeSelectedTextAlign,
     deleteSelected,
     duplicateSelected,
     zoomIn,
