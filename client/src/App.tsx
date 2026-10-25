@@ -35,6 +35,7 @@ export function App() {
     undo,
     redo,
     exportPNG,
+    tidyUp,
   } = useFabricCanvas(containerRef);
 
   const handleGenerateAIDiagram = useCallback((prompt: string) => {
@@ -83,6 +84,7 @@ export function App() {
         onChangeStroke={changeSelectedStroke}
         onDuplicate={duplicateSelected}
         onDelete={deleteSelected}
+        onTidyUp={tidyUp}
       />
 
       {/* Bottom Viewport Zoom Controls */}
@@ -102,6 +104,7 @@ export function App() {
         onAddArrow={addArrow}
         onUndo={undo}
         onRedo={redo}
+        onTidyUp={tidyUp}
       />
 
       {/* Modals */}
