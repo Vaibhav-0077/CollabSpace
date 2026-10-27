@@ -539,3 +539,75 @@ input, textarea {
   from { opacity: 0; transform: scale(0.95); }
   to { opacity: 1; transform: scale(1); }
 }
+
+/* ==========================================================================
+   Interactive Canvas Page Scrollbars (Excalidraw / Figma UX)
+   ========================================================================== */
+
+.canvas-scrollbars-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 22;
+}
+
+.canvas-scrollbar-track-v {
+  pointer-events: auto;
+  position: absolute;
+  right: 5px;
+  top: 68px;
+  bottom: 20px;
+  width: 8px;
+  border-radius: 9999px;
+  background: rgba(148, 163, 184, 0.12);
+  cursor: pointer;
+  transition: width 0.18s cubic-bezier(0.16, 1, 0.3, 1), background 0.18s ease;
+  user-select: none;
+}
+
+.canvas-scrollbar-track-v:hover {
+  width: 12px;
+  background: rgba(148, 163, 184, 0.22);
+}
+
+.canvas-scrollbar-track-h {
+  pointer-events: auto;
+  position: absolute;
+  left: 230px;
+  right: 28px;
+  bottom: 5px;
+  height: 8px;
+  border-radius: 9999px;
+  background: rgba(148, 163, 184, 0.12);
+  cursor: pointer;
+  transition: height 0.18s cubic-bezier(0.16, 1, 0.3, 1), background 0.18s ease;
+  user-select: none;
+}
+
+.canvas-scrollbar-track-h:hover {
+  height: 12px;
+  background: rgba(148, 163, 184, 0.22);
+}
+
+.canvas-scrollbar-thumb {
+  pointer-events: auto;
+  position: absolute;
+  border-radius: 9999px;
+  background: rgba(148, 163, 184, 0.45);
+  cursor: grab;
+  transition: background 0.15s ease;
+}
+
+.canvas-scrollbar-thumb:hover {
+  background: var(--accent-primary, #6366f1);
+}
+
+.canvas-scrollbar-thumb.dragging {
+  cursor: grabbing;
+  background: var(--accent-primary, #6366f1);
+  box-shadow: 0 0 10px rgba(99, 102, 241, 0.45);
+}
+

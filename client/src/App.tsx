@@ -5,6 +5,7 @@ import { TopBar } from './components/header/TopBar';
 import { FloatingDock } from './components/toolbar/FloatingDock';
 import { ContextualToolbar } from './components/toolbar/ContextualToolbar';
 import { CanvasControls } from './components/canvas/CanvasControls';
+import { CanvasScrollbars } from './components/canvas/CanvasScrollbars';
 import { RemoteCursors } from './components/collaboration/RemoteCursors';
 import { QuickStartCard } from './components/modals/QuickStartCard';
 import { ShareModal } from './components/modals/ShareModal';
@@ -39,6 +40,9 @@ export function App() {
     zoomIn,
     zoomOut,
     resetZoom,
+    fitToContent,
+    panBy,
+    setViewportPos,
     undo,
     redo,
     exportPNG,
@@ -51,11 +55,12 @@ export function App() {
     compileAndInjectDiagram(canvasRef.current, topology);
   }, [canvasRef]);
 
-  // Dynamic grid style
+  // Dynamic grid style synchronized with viewport panning
   const gridBackground = showGrid
     ? {
         backgroundImage: `radial-gradient(var(--grid-dot) 1.5px, transparent 1.5px)`,
         backgroundSize: `${Math.max(16, 24 * zoom)}px ${Math.max(16, 24 * zoom)}px`,
+        backgroundPosition: `${canvasVpt ? canvasVpt[4] : 0}px ${canvasVpt ? canvasVpt[5] : 0}px`,
       }
     : {};
 
@@ -101,11 +106,21 @@ export function App() {
         onTidyUp={tidyUp}
       />
 
+      {/* Interactive Page Scrollbars */}
+      <CanvasScrollbars
+        canvasRef={canvasRef}
+        canvasVpt={canvasVpt}
+        zoom={zoom}
+        onPanBy={panBy}
+        onSetViewportPos={setViewportPos}
+      />
+
       {/* Bottom Viewport Zoom Controls */}
       <CanvasControls
         onZoomIn={zoomIn}
         onZoomOut={zoomOut}
         onResetZoom={resetZoom}
+        onFitToContent={fitToContent}
       />
 
       {/* Centered Floating Dock */}
