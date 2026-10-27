@@ -96,6 +96,8 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
   const shapeStartPointRef = useRef<{ x: number; y: number } | null>(null);
   const currentDrawingObjectRef = useRef<FabricObject | null>(null);
   const updateSelectionStateRef = useRef<() => void>(() => {});
+  const fitToContentRef = useRef<() => void>(() => {});
+  const resetZoomRef = useRef<() => void>(() => {});
 
   // Helper to record history snapshot
   const saveHistory = useCallback(() => {
@@ -183,6 +185,7 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
       preserveObjectStacking: true,
       stopContextMenu: true,
       fireRightClick: true,
+      fireMiddleClick: true,
     });
     canvasRef.current = canvas;
 
@@ -194,21 +197,43 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
 
     saveHistory();
 
-    // Mouse wheel zoom
+    // Mouse wheel: Page Scroll (Vertical & Horizontal) + Pinch/Ctrl-Zoom
     const handleMouseWheel = (opt: TPointerEventInfo<WheelEvent>) => {
       const e = opt.e;
-      const delta = e.deltaY;
-      let currentZoom = canvas.getZoom();
-      currentZoom *= 0.999 ** delta;
-      if (currentZoom > 5) currentZoom = 5;
-      if (currentZoom < 0.1) currentZoom = 0.1;
-
-      const point = new Point(e.offsetX, e.offsetY);
-      canvas.zoomToPoint(point, currentZoom);
-      setZoom(Math.round(currentZoom * 100) / 100);
-      setCanvasVpt([...canvas.viewportTransform]);
       e.preventDefault();
       e.stopPropagation();
+
+      // Zoom when Ctrl / Meta is pressed (or trackpad pinch gesture)
+      if (e.ctrlKey || e.metaKey) {
+        const delta = e.deltaY;
+        let currentZoom = canvas.getZoom();
+        currentZoom *= 0.999 ** delta;
+        if (currentZoom > 5) currentZoom = 5;
+        if (currentZoom < 0.1) currentZoom = 0.1;
+
+        const point = new Point(e.offsetX, e.offsetY);
+        canvas.zoomToPoint(point, currentZoom);
+        setZoom(Math.round(currentZoom * 100) / 100);
+        setCanvasVpt([...canvas.viewportTransform]);
+        if (canvas.getActiveObject()) {
+          updateSelectionStateRef.current();
+        }
+        return;
+      }
+
+      // Normal Page Scroll
+      let dx = e.deltaX;
+      let dy = e.deltaY;
+      if (e.shiftKey && Math.abs(dx) < Math.abs(dy)) {
+        dx = dy;
+        dy = 0;
+      }
+
+      canvas.relativePan(new Point(-dx, -dy));
+      setCanvasVpt([...canvas.viewportTransform]);
+      if (canvas.getActiveObject()) {
+        updateSelectionStateRef.current();
+      }
     };
 
     // Pan handling
@@ -372,6 +397,9 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
         lastPanPosRef.current = { x: e.clientX, y: e.clientY };
         canvas.relativePan(new Point(deltaX, deltaY));
         setCanvasVpt([...canvas.viewportTransform]);
+        if (canvas.getActiveObject()) {
+          updateSelectionStateRef.current();
+        }
       }
 
       // Interactive Shape Drag Sizing ("Swipe screen to size shape")
@@ -881,11 +909,102 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
         }
       }
 
-      // Excalidraw Single-Key Tool Shortcuts
+      // Viewport Fit / Reset Shortcuts
+      if ((e.metaKey || e.ctrlKey) && e.key === '0') {
+        e.preventDefault();
+        resetZoomRef.current();
+        return;
+      }
+      if (e.shiftKey && (e.key === '!' || e.key === '1')) {
+        e.preventDefault();
+        fitToContentRef.current();
+        return;
+      }
+
+      // Excalidraw Single-Key Tool Shortcuts & Page Scroll / Nudge
       const isInputFocused =
         (e.target as HTMLElement).tagName === 'INPUT' ||
         (e.target as HTMLElement).tagName === 'TEXTAREA' ||
         ((canvas.getActiveObject() as any)?.isEditing);
+
+      if (!isInputFocused) {
+        const activeObj = canvas.getActiveObject();
+        if (!activeObj) {
+          // Canvas page scroll with Arrow keys / PageUp / PageDown / Home
+          const scrollStep = e.shiftKey ? 180 : 60;
+          if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            canvas.relativePan(new Point(0, scrollStep));
+            setCanvasVpt([...canvas.viewportTransform]);
+            return;
+          } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            canvas.relativePan(new Point(0, -scrollStep));
+            setCanvasVpt([...canvas.viewportTransform]);
+            return;
+          } else if (e.key === 'ArrowLeft') {
+            e.preventDefault();
+            canvas.relativePan(new Point(scrollStep, 0));
+            setCanvasVpt([...canvas.viewportTransform]);
+            return;
+          } else if (e.key === 'ArrowRight') {
+            e.preventDefault();
+            canvas.relativePan(new Point(-scrollStep, 0));
+            setCanvasVpt([...canvas.viewportTransform]);
+            return;
+          } else if (e.key === 'PageUp') {
+            e.preventDefault();
+            canvas.relativePan(new Point(0, 300));
+            setCanvasVpt([...canvas.viewportTransform]);
+            return;
+          } else if (e.key === 'PageDown') {
+            e.preventDefault();
+            canvas.relativePan(new Point(0, -300));
+            setCanvasVpt([...canvas.viewportTransform]);
+            return;
+          } else if (e.key === 'Home') {
+            e.preventDefault();
+            resetZoomRef.current();
+            return;
+          }
+        } else if (!(activeObj as any).isEditing) {
+          // Object is selected: nudge object with arrow keys
+          const nudge = e.shiftKey ? 10 : 2;
+          if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            activeObj.set('top', (activeObj.top || 0) - nudge);
+            activeObj.setCoords();
+            canvas.requestRenderAll();
+            updateSelectionStateRef.current();
+            saveHistory();
+            return;
+          } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            activeObj.set('top', (activeObj.top || 0) + nudge);
+            activeObj.setCoords();
+            canvas.requestRenderAll();
+            updateSelectionStateRef.current();
+            saveHistory();
+            return;
+          } else if (e.key === 'ArrowLeft') {
+            e.preventDefault();
+            activeObj.set('left', (activeObj.left || 0) - nudge);
+            activeObj.setCoords();
+            canvas.requestRenderAll();
+            updateSelectionStateRef.current();
+            saveHistory();
+            return;
+          } else if (e.key === 'ArrowRight') {
+            e.preventDefault();
+            activeObj.set('left', (activeObj.left || 0) + nudge);
+            activeObj.setCoords();
+            canvas.requestRenderAll();
+            updateSelectionStateRef.current();
+            saveHistory();
+            return;
+          }
+        }
+      }
 
       if (!isInputFocused && !e.metaKey && !e.ctrlKey && !e.altKey) {
         const k = e.key.toLowerCase();
@@ -1450,6 +1569,80 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     setCanvasVpt([1, 0, 0, 1, 0, 0]);
     canvas.requestRenderAll();
   }, [setZoom]);
+  resetZoomRef.current = resetZoom;
+
+  const panBy = useCallback((dx: number, dy: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    canvas.relativePan(new Point(dx, dy));
+    setCanvasVpt([...canvas.viewportTransform]);
+    if (canvas.getActiveObject()) {
+      updateSelectionStateRef.current();
+    }
+  }, []);
+
+  const setViewportPos = useCallback((vptX: number, vptY: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const vpt = [...canvas.viewportTransform];
+    vpt[4] = vptX;
+    vpt[5] = vptY;
+    canvas.setViewportTransform(vpt as [number, number, number, number, number, number]);
+    setCanvasVpt([...vpt]);
+    if (canvas.getActiveObject()) {
+      updateSelectionStateRef.current();
+    }
+  }, []);
+
+  const fitToContent = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const objects = canvas.getObjects().filter((o: any) => !o.isGuideline && !o.isAnchorPoint);
+    if (objects.length === 0) {
+      resetZoom();
+      return;
+    }
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    objects.forEach((obj: any) => {
+      const left = obj.left ?? 0;
+      const top = obj.top ?? 0;
+      const width = obj.getScaledWidth ? obj.getScaledWidth() : (obj.width || 0);
+      const height = obj.getScaledHeight ? obj.getScaledHeight() : (obj.height || 0);
+      if (left < minX) minX = left;
+      if (top < minY) minY = top;
+      if (left + width > maxX) maxX = left + width;
+      if (top + height > maxY) maxY = top + height;
+    });
+
+    const padding = 100;
+    const contentW = Math.max(100, maxX - minX + padding * 2);
+    const contentH = Math.max(100, maxY - minY + padding * 2);
+    const canvasW = canvas.getWidth();
+    const canvasH = canvas.getHeight();
+
+    let fitZoom = Math.min(canvasW / contentW, canvasH / contentH);
+    fitZoom = Math.max(0.1, Math.min(2, fitZoom));
+
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+
+    const vptX = canvasW / 2 - centerX * fitZoom;
+    const vptY = canvasH / 2 - centerY * fitZoom;
+
+    canvas.setViewportTransform([fitZoom, 0, 0, fitZoom, vptX, vptY]);
+    setZoom(Math.round(fitZoom * 100) / 100);
+    setCanvasVpt([fitZoom, 0, 0, fitZoom, vptX, vptY]);
+    canvas.requestRenderAll();
+    if (canvas.getActiveObject()) {
+      updateSelectionStateRef.current();
+    }
+  }, [resetZoom, setZoom]);
+  fitToContentRef.current = fitToContent;
 
   // High-Resolution PNG Export
   const exportPNG = useCallback(() => {
@@ -1502,6 +1695,9 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     zoomIn,
     zoomOut,
     resetZoom,
+    fitToContent,
+    panBy,
+    setViewportPos,
     undo,
     redo,
     exportPNG,
