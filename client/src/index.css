@@ -199,7 +199,7 @@ input, textarea {
 /* Floating Bottom Dock Toolbar */
 .floating-dock-container {
   position: absolute;
-  bottom: 24px;
+  top: 14px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 20;
@@ -239,7 +239,8 @@ input, textarea {
 /* Tooltip Badge */
 .tool-tooltip {
   position: absolute;
-  bottom: calc(100% + 10px);
+  top: calc(100% + 8px);
+  bottom: auto;
   left: 50%;
   transform: translateX(-50%);
   background: var(--bg-surface-elevated);
@@ -270,7 +271,7 @@ input, textarea {
 
 .dock-tool-btn:hover .tool-tooltip {
   opacity: 1;
-  transform: translateX(-50%) translateY(-2px);
+  transform: translateX(-50%) translateY(2px);
 }
 
 /* Floating Contextual Toolbar above selection */
@@ -432,11 +433,11 @@ input, textarea {
   box-shadow: 0 0 0 2px var(--accent-primary);
 }
 
-/* Canvas Viewport Controls (Bottom-Left) */
+/* Canvas Viewport Controls (Top-Left under Title) */
 .canvas-viewport-controls {
   position: absolute;
-  bottom: 24px;
-  left: 20px;
+  top: 68px;
+  left: 16px;
   z-index: 20;
   display: flex;
   align-items: center;
@@ -576,8 +577,8 @@ input, textarea {
 .canvas-scrollbar-track-h {
   pointer-events: auto;
   position: absolute;
-  left: 230px;
-  right: 28px;
+  left: 20px;
+  right: 245px;
   bottom: 5px;
   height: 8px;
   border-radius: 9999px;
@@ -609,5 +610,96 @@ input, textarea {
   cursor: grabbing;
   background: var(--accent-primary, #6366f1);
   box-shadow: 0 0 10px rgba(99, 102, 241, 0.45);
+}
+
+/* ==========================================================================
+   Interactive Canvas Minimap
+   ========================================================================== */
+
+.canvas-minimap-container {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  z-index: 21;
+  padding: 8px;
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+  animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  user-select: none;
+}
+
+.minimap-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 4px;
+}
+
+.minimap-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+}
+
+.minimap-zoom-badge {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-tertiary);
+  background: var(--bg-hover);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.minimap-icon-btn {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: var(--text-secondary);
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.minimap-icon-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.minimap-canvas {
+  border-radius: 6px;
+  background: var(--bg-surface-solid);
+  border: 1px solid var(--border-subtle);
+  cursor: crosshair;
+  display: block;
+}
+
+.minimap-pill-btn {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  z-index: 21;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  transition: all var(--transition-fast);
+  cursor: pointer;
+}
+
+.minimap-pill-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+  transform: translateY(-1px);
 }
 

@@ -6,6 +6,7 @@ import { FloatingDock } from './components/toolbar/FloatingDock';
 import { ContextualToolbar } from './components/toolbar/ContextualToolbar';
 import { CanvasControls } from './components/canvas/CanvasControls';
 import { CanvasScrollbars } from './components/canvas/CanvasScrollbars';
+import { CanvasMinimap } from './components/canvas/CanvasMinimap';
 import { RemoteCursors } from './components/collaboration/RemoteCursors';
 import { QuickStartCard } from './components/modals/QuickStartCard';
 import { ShareModal } from './components/modals/ShareModal';
@@ -115,7 +116,16 @@ export function App() {
         onSetViewportPos={setViewportPos}
       />
 
-      {/* Bottom Viewport Zoom Controls */}
+      {/* Interactive Canvas Minimap (Bottom-Right) */}
+      <CanvasMinimap
+        canvasRef={canvasRef}
+        canvasVpt={canvasVpt}
+        zoom={zoom}
+        onPanTo={setViewportPos}
+        onPanBy={panBy}
+      />
+
+      {/* Top Viewport Zoom Controls */}
       <CanvasControls
         onZoomIn={zoomIn}
         onZoomOut={zoomOut}
@@ -123,7 +133,7 @@ export function App() {
         onFitToContent={fitToContent}
       />
 
-      {/* Centered Floating Dock */}
+      {/* Centered Top Floating Dock (Excalidraw UX) */}
       <FloatingDock
         onAddRectangle={addRectangle}
         onAddCircle={addCircle}
