@@ -32,6 +32,8 @@ export function App() {
     changeSelectedFontSize,
     changeSelectedFontFamily,
     changeSelectedTextAlign,
+    changeSelectedArrowCurvature,
+    changeSelectedArrowhead,
     deleteSelected,
     duplicateSelected,
     zoomIn,
@@ -92,6 +94,8 @@ export function App() {
         onChangeFontSize={changeSelectedFontSize}
         onChangeFontFamily={changeSelectedFontFamily}
         onChangeTextAlign={changeSelectedTextAlign}
+        onChangeArrowCurvature={changeSelectedArrowCurvature}
+        onChangeArrowhead={changeSelectedArrowhead}
         onDuplicate={duplicateSelected}
         onDelete={deleteSelected}
         onTidyUp={tidyUp}
