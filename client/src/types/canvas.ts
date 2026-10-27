@@ -57,9 +57,14 @@ export interface SelectedObjectState {
   fontSize?: number;
   fontFamily?: string;
   textAlign?: string;
+  isConnector?: boolean;
+  isCurved?: boolean;
+  curvature?: number;
+  arrowhead?: 'end' | 'both' | 'none';
   opacity?: number;
   left: number;
   top: number;
   width: number;
   height: number;
 }
+
