@@ -22,6 +22,9 @@ import {
   createSmartConnector, 
   updateAttachedConnectors, 
   findNearestAnchor, 
+  findHoveredShape,
+  showShapeAnchorPoints,
+  clearAnchorPoints,
   attachArrowHead,
   getShapeAnchors,
   type AnchorType 
@@ -326,13 +329,27 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
             evented: false,
           } as any);
         } else if (currentTool === 'arrow') {
+          const nearStart = findNearestAnchor(point.x, point.y, canvas);
+          let startX = point.x;
+          let startY = point.y;
+          let fromId: string | undefined;
+          let fromAnchor: AnchorType | undefined;
+          if (nearStart) {
+            startX = nearStart.anchor.x;
+            startY = nearStart.anchor.y;
+            fromId = nearStart.shapeId;
+            fromAnchor = nearStart.anchor.type;
+          }
           shape = createSmartConnector({
-            x1: point.x,
-            y1: point.y,
-            x2: point.x,
-            y2: point.y,
+            x1: startX,
+            y1: startY,
+            x2: startX,
+            y2: startY,
+            fromId,
+            fromAnchor,
             stroke: stroke,
             strokeWidth: width + 1,
+            isCurved: false,
           });
           shape.set({ selectable: false, evented: false });
         }
@@ -384,7 +401,24 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
             ];
             (currentObj as any).set({ left, top, width: w, height: h, points: pts });
           } else if (tool === 'arrow') {
-            (currentObj as Line).set({ x1: start.x, y1: start.y, x2: point.x, y2: point.y });
+            const near = findNearestAnchor(point.x, point.y, canvas, (currentObj as any).fromId);
+            if (near) {
+              const targetShape = canvas.getObjects().find((o: any) => o.id === near.shapeId);
+              if (targetShape) showShapeAnchorPoints(targetShape, canvas, near.anchor.type);
+              (currentObj as Line).set({ x1: start.x, y1: start.y, x2: near.anchor.x, y2: near.anchor.y });
+              (currentObj as any).toId = near.shapeId;
+              (currentObj as any).toAnchor = near.anchor.type;
+            } else {
+              (currentObj as Line).set({ x1: start.x, y1: start.y, x2: point.x, y2: point.y });
+              (currentObj as any).toId = undefined;
+              (currentObj as any).toAnchor = undefined;
+              const hovered = findHoveredShape(point.x, point.y, canvas, (currentObj as any).fromId);
+              if (hovered) {
+                showShapeAnchorPoints(hovered, canvas);
+              } else {
+                clearAnchorPoints(canvas);
+              }
+            }
           }
 
           currentObj.setCoords();
@@ -406,6 +440,7 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     // 3. Mouse Up: Commit created shape, make selectable, and switch to select tool
     const handleMouseUp = () => {
       clearGuidelines(canvas);
+      clearAnchorPoints(canvas);
       if (isPanningRef.current) {
         isPanningRef.current = false;
         canvas.selection = activeToolRef.current === 'select';
@@ -488,7 +523,7 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
           canvas.setActiveObject(currentObj);
           saveHistory();
           socketService.emitObjectAdded(
-            (currentObj as any).toObject(['id', 'name', 'shadow', 'rx', 'ry', 'isConnector', 'fromId', 'toId', 'fromAnchor', 'toAnchor'])
+            (currentObj as any).toObject(['id', 'name', 'shadow', 'rx', 'ry', 'strokeDashArray', 'strokeWidth', 'isConnector', 'isCurved', 'curvature', 'arrowhead', 'fromId', 'toId', 'fromAnchor', 'toAnchor'])
           );
         }
 
@@ -605,6 +640,10 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
         fontSize: textObj ? (textObj.fontSize || 18) : undefined,
         fontFamily: textObj ? (textObj.fontFamily || 'Plus Jakarta Sans') : undefined,
         textAlign: textObj ? (textObj.textAlign || 'left') : undefined,
+        isConnector: !!(activeObj as any).isConnector,
+        isCurved: !!(activeObj as any).isCurved,
+        curvature: (activeObj as any).curvature || 0,
+        arrowhead: (activeObj as any).arrowhead || 'end',
         opacity: activeObj.get('opacity') || 1,
         left: bound.left + bound.width / 2,
         top: bound.top,
@@ -629,6 +668,18 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
           obj.set({ top: snap.snappedTop });
         }
         obj.setCoords();
+      }
+
+      // If moving an arrow/connector, show anchor points on hovered shape
+      if (obj.isConnector) {
+        const bound = obj.getBoundingRect();
+        const center = { x: bound.left + bound.width / 2, y: bound.top + bound.height / 2 };
+        const hovered = findHoveredShape(center.x, center.y, canvas, obj.id);
+        if (hovered) {
+          showShapeAnchorPoints(hovered, canvas);
+        } else {
+          clearAnchorPoints(canvas);
+        }
       }
 
       // 2. Dynamic Connector lines follow shape
@@ -658,6 +709,7 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     canvas.on('selection:created', updateSelectionState);
     canvas.on('selection:updated', updateSelectionState);
     canvas.on('selection:cleared', () => {
+      clearAnchorPoints(canvas);
       if (currentLockedIdRef.current) {
         socketService.emitObjectUnlock(currentLockedIdRef.current);
         currentLockedIdRef.current = null;
@@ -668,9 +720,10 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     // Object mutation sync
     canvas.on('object:modified', (e) => {
       clearGuidelines(canvas);
+      clearAnchorPoints(canvas);
       saveHistory();
       if (!isRemoteMutationRef.current && e.target) {
-        const serialized = (e.target as any).toObject(['id', 'name', 'shadow', 'rx', 'ry', 'isConnector', 'fromId', 'toId', 'fromAnchor', 'toAnchor']);
+        const serialized = (e.target as any).toObject(['id', 'name', 'shadow', 'rx', 'ry', 'strokeDashArray', 'strokeWidth', 'fontSize', 'fontFamily', 'textAlign', 'isConnector', 'isCurved', 'curvature', 'arrowhead', 'fromId', 'toId', 'fromAnchor', 'toAnchor']);
         socketService.emitObjectModified(serialized);
 
         // Also broadcast updated coordinates for any attached connectors
@@ -1282,6 +1335,40 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     }
   }, [saveHistory]);
 
+  const changeSelectedArrowCurvature = useCallback((isCurved: boolean, curvature = 50) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const active = canvas.getActiveObject();
+    if (active && (active as any).isConnector) {
+      (active as any).isCurved = isCurved;
+      (active as any).curvature = isCurved ? curvature : 0;
+      (active as any).padding = Math.max(16, Math.abs((active as any).curvature) / 2 + 10);
+      active.setCoords();
+      canvas.requestRenderAll();
+      saveHistory();
+      updateSelectionStateRef.current();
+      socketService.emitObjectModified(
+        (active as any).toObject(['id', 'name', 'shadow', 'rx', 'ry', 'strokeDashArray', 'strokeWidth', 'isConnector', 'isCurved', 'curvature', 'arrowhead', 'fromId', 'toId', 'fromAnchor', 'toAnchor'])
+      );
+    }
+  }, [saveHistory]);
+
+  const changeSelectedArrowhead = useCallback((style: 'end' | 'both' | 'none') => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const active = canvas.getActiveObject();
+    if (active && (active as any).isConnector) {
+      (active as any).arrowhead = style;
+      active.setCoords();
+      canvas.requestRenderAll();
+      saveHistory();
+      updateSelectionStateRef.current();
+      socketService.emitObjectModified(
+        (active as any).toObject(['id', 'name', 'shadow', 'rx', 'ry', 'strokeDashArray', 'strokeWidth', 'isConnector', 'isCurved', 'curvature', 'arrowhead', 'fromId', 'toId', 'fromAnchor', 'toAnchor'])
+      );
+    }
+  }, [saveHistory]);
+
   const deleteSelected = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -1408,6 +1495,8 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     changeSelectedFontSize,
     changeSelectedFontFamily,
     changeSelectedTextAlign,
+    changeSelectedArrowCurvature,
+    changeSelectedArrowhead,
     deleteSelected,
     duplicateSelected,
     zoomIn,
