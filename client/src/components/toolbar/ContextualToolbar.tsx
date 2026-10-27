@@ -11,6 +11,8 @@ interface ContextualToolbarProps {
   onChangeFontSize: (size: number) => void;
   onChangeFontFamily: (family: string) => void;
   onChangeTextAlign: (align: 'left' | 'center' | 'right') => void;
+  onChangeArrowCurvature?: (isCurved: boolean, curvature?: number) => void;
+  onChangeArrowhead?: (style: 'end' | 'both' | 'none') => void;
   onDuplicate: () => void;
   onDelete: () => void;
   onTidyUp?: () => void;
@@ -24,6 +26,8 @@ export const ContextualToolbar: React.FC<ContextualToolbarProps> = ({
   onChangeFontSize,
   onChangeFontFamily,
   onChangeTextAlign,
+  onChangeArrowCurvature,
+  onChangeArrowhead,
   onDuplicate,
   onDelete,
   onTidyUp,
@@ -34,7 +38,8 @@ export const ContextualToolbar: React.FC<ContextualToolbarProps> = ({
 
   const isTextbox = selectedObject.type === 'textbox';
   const isGroup = selectedObject.type === 'group';
-  const hasShape = !isTextbox || isGroup;
+  const isConnector = !!selectedObject.isConnector;
+  const hasShape = (!isTextbox || isGroup) && !isConnector;
   const hasText = isTextbox || isGroup || selectedObject.fontSize !== undefined;
 
   // Clamped position to keep toolbar in viewport
@@ -78,7 +83,7 @@ export const ContextualToolbar: React.FC<ContextualToolbarProps> = ({
     >
       {/* ROW 1: Colors & Actions */}
       <div className="contextual-row">
-        {/* Fill Colors (if has shape) */}
+        {/* Fill Colors (if standard shape, not line/arrow) */}
         {hasShape && (
           <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
             {PASTEL_COLORS.map((c) => (
@@ -123,12 +128,12 @@ export const ContextualToolbar: React.FC<ContextualToolbarProps> = ({
           </div>
         )}
 
-        {/* Stroke Colors (if has shape) */}
-        {hasShape && (
+        {/* Stroke Colors (if shape or connector arrow) */}
+        {(hasShape || isConnector) && (
           <>
-            <div className="dock-divider" style={{ height: '18px' }} />
+            {hasShape && <div className="dock-divider" style={{ height: '18px' }} />}
             <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-              {STROKE_COLORS.slice(0, 5).map((c) => (
+              {STROKE_COLORS.map((c) => (
                 <button
                   key={c.value}
                   type="button"
@@ -151,7 +156,7 @@ export const ContextualToolbar: React.FC<ContextualToolbarProps> = ({
 
         {/* Action Buttons: Tidy-Up, Duplicate, Delete */}
         <div style={{ display: 'flex', gap: '2px', alignItems: 'center' }}>
-          {onTidyUp && (
+          {onTidyUp && !isConnector && (
             <button
               type="button"
               className="dock-tool-btn"
@@ -185,10 +190,10 @@ export const ContextualToolbar: React.FC<ContextualToolbarProps> = ({
         </div>
       </div>
 
-      {/* ROW 2: Shape Stroke Width & Style OR Text Font Style, Size & Align */}
+      {/* ROW 2: Stroke Width & Style, Arrow Curvature & Head, OR Text Font Style, Size & Align */}
       <div className="contextual-row" style={{ paddingTop: '2px' }}>
-        {/* 1. Box Stroke Width (Thin, Medium, Bold) */}
-        {hasShape && (
+        {/* 1. Stroke Width (Thin, Medium, Bold) for Shapes & Connectors */}
+        {(hasShape || isConnector) && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             <span className="contextual-label">Stroke</span>
             <div className="segmented-group">
@@ -223,8 +228,8 @@ export const ContextualToolbar: React.FC<ContextualToolbarProps> = ({
           </div>
         )}
 
-        {/* 2. Box Stroke Style (Solid, Dashed, Dotted) */}
-        {hasShape && (
+        {/* 2. Stroke Style (Solid, Dashed, Dotted) */}
+        {(hasShape || isConnector) && (
           <>
             <div className="dock-divider" style={{ height: '16px' }} />
             <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -256,6 +261,87 @@ export const ContextualToolbar: React.FC<ContextualToolbarProps> = ({
                 >
                   <span className="stroke-style-preview style-dotted" />
                   <span>Dotted</span>
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* 3. Arrow Shape Curvature (Straight vs Curved) */}
+        {isConnector && onChangeArrowCurvature && (
+          <>
+            <div className="dock-divider" style={{ height: '16px' }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span className="contextual-label">Arrow</span>
+              <div className="segmented-group">
+                <button
+                  type="button"
+                  className={`segmented-btn ${!selectedObject.isCurved ? 'active' : ''}`}
+                  onClick={() => onChangeArrowCurvature(false, 0)}
+                  title="Straight Arrow"
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="4" y1="12" x2="20" y2="12" />
+                    <polyline points="14 6 20 12 14 18" />
+                  </svg>
+                  <span>Straight</span>
+                </button>
+                <button
+                  type="button"
+                  className={`segmented-btn ${selectedObject.isCurved ? 'active' : ''}`}
+                  onClick={() => onChangeArrowCurvature(true, 50)}
+                  title="Curved Arrow (as in image)"
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M4 18 Q 12 4, 20 12" />
+                    <polyline points="15 6 20 12 15 17" />
+                  </svg>
+                  <span>Curved</span>
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* 4. Arrow Head Style (End, Both, None) */}
+        {isConnector && onChangeArrowhead && (
+          <>
+            <div className="dock-divider" style={{ height: '16px' }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span className="contextual-label">Head</span>
+              <div className="segmented-group">
+                <button
+                  type="button"
+                  className={`segmented-btn ${selectedObject.arrowhead !== 'both' && selectedObject.arrowhead !== 'none' ? 'active' : ''}`}
+                  onClick={() => onChangeArrowhead('end')}
+                  title="Single Arrowhead"
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="3" y1="12" x2="21" y2="12" />
+                    <polyline points="15 6 21 12 15 18" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className={`segmented-btn ${selectedObject.arrowhead === 'both' ? 'active' : ''}`}
+                  onClick={() => onChangeArrowhead('both')}
+                  title="Two-way Arrowhead"
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="9 6 3 12 9 18" />
+                    <line x1="3" y1="12" x2="21" y2="12" />
+                    <polyline points="15 6 21 12 15 18" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className={`segmented-btn ${selectedObject.arrowhead === 'none' ? 'active' : ''}`}
+                  onClick={() => onChangeArrowhead('none')}
+                  title="Plain Line"
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="3" y1="12" x2="21" y2="12" />
+                  </svg>
                 </button>
               </div>
             </div>
