@@ -20,7 +20,7 @@ export const QuickStartCard: React.FC = () => {
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', textAlign: 'left', background: 'var(--bg-hover)', padding: '14px 18px', borderRadius: '10px', border: '1px solid var(--border-subtle)' }}>
         <div className="quick-start-step">
           <MousePointer2 size={15} style={{ color: 'var(--accent-light)', flexShrink: 0 }} />
-          <span><strong>1. Click a shape</strong> or tool on the bottom dock below</span>
+          <span><strong>1. Click a shape</strong> or tool on the top dock above</span>
         </div>
         <div className="quick-start-step">
           <StickyNote size={15} style={{ color: '#fef08a', flexShrink: 0 }} />
