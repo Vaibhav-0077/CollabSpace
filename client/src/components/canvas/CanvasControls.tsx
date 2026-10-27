@@ -1,17 +1,19 @@
 import React from 'react';
-import { ZoomIn, ZoomOut, Scan, Grid } from 'lucide-react';
+import { ZoomIn, ZoomOut, Scan, Maximize2, Grid } from 'lucide-react';
 import { useCanvasStore } from '../../store/canvasStore';
 
 interface CanvasControlsProps {
   onZoomIn: () => void;
   onZoomOut: () => void;
   onResetZoom: () => void;
+  onFitToContent?: () => void;
 }
 
 export const CanvasControls: React.FC<CanvasControlsProps> = ({
   onZoomIn,
   onZoomOut,
   onResetZoom,
+  onFitToContent,
 }) => {
   const { zoom, showGrid, toggleGrid } = useCanvasStore();
 
@@ -49,6 +51,17 @@ export const CanvasControls: React.FC<CanvasControlsProps> = ({
       >
         <Scan size={16} />
       </button>
+
+      {onFitToContent && (
+        <button
+          type="button"
+          className="control-icon-btn"
+          onClick={onFitToContent}
+          title="Fit All Content to Screen (Shift+1)"
+        >
+          <Maximize2 size={16} />
+        </button>
+      )}
 
       <button
         type="button"
