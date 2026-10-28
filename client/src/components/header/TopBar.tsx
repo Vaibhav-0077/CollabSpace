@@ -4,9 +4,7 @@ import {
   Share2, 
   Download, 
   Sun, 
-  Moon, 
-  Wifi, 
-  WifiOff 
+  Moon 
 } from 'lucide-react';
 import { useCanvasStore } from '../../store/canvasStore';
 
@@ -35,15 +33,15 @@ export const TopBar: React.FC<TopBarProps> = ({ onExport }) => {
   return (
     <header className="top-bar">
       {/* Brand & Board Title */}
-      <div className="top-bar-interactive glass-panel" style={{ padding: '4px 8px' }}>
+      <div className="top-bar-interactive glass-panel" style={{ padding: '3px 8px' }}>
         <div className="brand-badge">
           <div className="brand-icon-wrapper">
-            <Sparkles size={15} />
+            <Sparkles size={14} />
           </div>
-          <span>CollabSpace</span>
+          <span className="brand-text">CollabSpace</span>
         </div>
 
-        <div className="dock-divider" style={{ height: '20px' }} />
+        <div className="dock-divider" style={{ height: '16px' }} />
 
         <input
           type="text"
@@ -55,21 +53,15 @@ export const TopBar: React.FC<TopBarProps> = ({ onExport }) => {
 
         {/* Live Multiplayer Status Indicator */}
         <div
+          className="live-status-pill"
           style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '5px',
-            padding: '2px 8px',
-            borderRadius: '12px',
             background: isConnected ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
             color: isConnected ? '#10b981' : '#ef4444',
-            fontSize: '11px',
-            fontWeight: 600,
           }}
           title={isConnected ? 'Connected to real-time sync server' : 'Disconnected from server'}
         >
-          {isConnected ? <Wifi size={12} /> : <WifiOff size={12} />}
-          <span>{isConnected ? 'Live' : 'Offline'}</span>
+          <span className={`status-dot ${isConnected ? 'live' : 'offline'}`} />
+          <span className="live-status-label">{isConnected ? 'Live' : 'Offline'}</span>
         </div>
       </div>
 
