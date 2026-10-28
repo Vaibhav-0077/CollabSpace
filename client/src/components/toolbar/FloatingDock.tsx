@@ -55,7 +55,7 @@ export const FloatingDock: React.FC<FloatingDockProps> = ({
         onClick={() => setActiveTool('select')}
         aria-label="Select Tool"
       >
-        <MousePointer2 size={18} />
+        <MousePointer2 size={16} />
         <span className="tool-tooltip">Select <kbd>V</kbd></span>
       </button>
 
@@ -65,7 +65,7 @@ export const FloatingDock: React.FC<FloatingDockProps> = ({
         onClick={() => setActiveTool('hand')}
         aria-label="Hand / Pan Tool"
       >
-        <Hand size={18} />
+        <Hand size={16} />
         <span className="tool-tooltip">Pan Canvas <kbd>H / Space</kbd></span>
       </button>
 
@@ -78,7 +78,7 @@ export const FloatingDock: React.FC<FloatingDockProps> = ({
         onClick={() => handleToolSelect('rectangle')}
         aria-label="Rectangle"
       >
-        <Square size={18} />
+        <Square size={16} />
         <span className="tool-tooltip">Rectangle <kbd>R</kbd></span>
       </button>
 
@@ -88,7 +88,7 @@ export const FloatingDock: React.FC<FloatingDockProps> = ({
         onClick={() => handleToolSelect('circle')}
         aria-label="Circle"
       >
-        <CircleIcon size={18} />
+        <CircleIcon size={16} />
         <span className="tool-tooltip">Circle <kbd>O</kbd></span>
       </button>
 
@@ -98,7 +98,7 @@ export const FloatingDock: React.FC<FloatingDockProps> = ({
         onClick={() => handleToolSelect('diamond')}
         aria-label="Diamond"
       >
-        <DiamondIcon size={18} />
+        <DiamondIcon size={16} />
         <span className="tool-tooltip">Decision Node <kbd>D</kbd></span>
       </button>
 
@@ -108,7 +108,7 @@ export const FloatingDock: React.FC<FloatingDockProps> = ({
         onClick={() => handleToolSelect('sticky')}
         aria-label="Sticky Note"
       >
-        <StickyNote size={18} />
+        <StickyNote size={16} />
         <span className="tool-tooltip">Sticky Note <kbd>S</kbd></span>
       </button>
 
@@ -118,7 +118,7 @@ export const FloatingDock: React.FC<FloatingDockProps> = ({
         onClick={() => setActiveTool('pencil')}
         aria-label="Draw Pencil"
       >
-        <Pencil size={18} />
+        <Pencil size={16} />
         <span className="tool-tooltip">Draw Pen <kbd>P</kbd></span>
       </button>
 
@@ -128,7 +128,7 @@ export const FloatingDock: React.FC<FloatingDockProps> = ({
         onClick={() => handleToolSelect('text')}
         aria-label="Text"
       >
-        <Type size={18} />
+        <Type size={16} />
         <span className="tool-tooltip">Text <kbd>T</kbd></span>
       </button>
 
@@ -138,7 +138,7 @@ export const FloatingDock: React.FC<FloatingDockProps> = ({
         onClick={() => handleToolSelect('arrow')}
         aria-label="Arrow"
       >
-        <MoveRight size={18} />
+        <MoveRight size={16} />
         <span className="tool-tooltip">Magnetic Connector <kbd>A</kbd></span>
       </button>
 
@@ -153,7 +153,7 @@ export const FloatingDock: React.FC<FloatingDockProps> = ({
           onClick={onTidyUp}
           aria-label="Tidy Up Layout"
         >
-          <LayoutGrid size={18} />
+          <LayoutGrid size={16} />
           <span className="tool-tooltip">Tidy Up Layout</span>
         </button>
       )}
@@ -166,7 +166,7 @@ export const FloatingDock: React.FC<FloatingDockProps> = ({
         onClick={() => setIsAIModalOpen(true)}
         aria-label="AI Diagram Generator"
       >
-        <Sparkles size={18} />
+        <Sparkles size={16} />
         <span className="tool-tooltip">AI Diagram <kbd>⌘K</kbd></span>
       </button>
 
@@ -181,7 +181,7 @@ export const FloatingDock: React.FC<FloatingDockProps> = ({
         style={{ opacity: canUndo ? 1 : 0.4 }}
         aria-label="Undo"
       >
-        <Undo2 size={18} />
+        <Undo2 size={16} />
         <span className="tool-tooltip">Undo <kbd>⌘Z</kbd></span>
       </button>
 
@@ -193,7 +193,7 @@ export const FloatingDock: React.FC<FloatingDockProps> = ({
         style={{ opacity: canRedo ? 1 : 0.4 }}
         aria-label="Redo"
       >
-        <Redo2 size={18} />
+        <Redo2 size={16} />
         <span className="tool-tooltip">Redo <kbd>⌘Y</kbd></span>
       </button>
     </div>
