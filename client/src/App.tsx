@@ -47,6 +47,10 @@ export function App() {
     undo,
     redo,
     exportPNG,
+    exportSVG,
+    exportJSON,
+    copyCanvasToClipboard,
+    addImageFromURL,
     tidyUp,
   } = useFabricCanvas(containerRef);
 
@@ -76,7 +80,12 @@ export function App() {
       }}
     >
       {/* Top Header Bar */}
-      <TopBar onExport={exportPNG} />
+      <TopBar
+        onExportPNG={exportPNG}
+        onExportSVG={exportSVG}
+        onExportJSON={exportJSON}
+        onCopyImage={copyCanvasToClipboard}
+      />
 
       {/* Canvas Viewport Container */}
       <div
@@ -141,6 +150,7 @@ export function App() {
         onAddStickyNote={addStickyNote}
         onAddText={addText}
         onAddArrow={addArrow}
+        onUploadImage={addImageFromURL}
         onUndo={undo}
         onRedo={redo}
         onTidyUp={tidyUp}

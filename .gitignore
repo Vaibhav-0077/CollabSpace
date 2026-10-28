@@ -30,3 +30,7 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+
+# Personal notes
+updated.md
+updates.md
