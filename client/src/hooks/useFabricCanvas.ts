@@ -12,7 +12,8 @@ import {
   FabricObject,
   Shadow,
   type TPointerEventInfo,
-  util
+  util,
+  FabricImage
 } from 'fabric';
 import { useCanvasStore } from '../store/canvasStore';
 import { socketService } from '../services/socketService';
@@ -61,6 +62,7 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     setSelectedObject,
     setHasObjects,
     boardId,
+    boardTitle,
     nickname,
     userColor,
   } = useCanvasStore();
@@ -98,6 +100,8 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
   const updateSelectionStateRef = useRef<() => void>(() => {});
   const fitToContentRef = useRef<() => void>(() => {});
   const resetZoomRef = useRef<() => void>(() => {});
+  const lastMouseScenePointRef = useRef<{ x: number; y: number } | null>(null);
+  const addImageFromURLRef = useRef<(dataUrl: string, x?: number, y?: number) => Promise<void>>(async () => {});
 
   // Helper to record history snapshot
   const saveHistory = useCallback(() => {
@@ -454,12 +458,17 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
         }
       }
 
+      // Track mouse scene coordinate for clipboard paste & cursor broadcast
+      const currentPoint = canvas.getScenePoint ? canvas.getScenePoint(opt.e) : (canvas as any).getPointer(opt.e);
+      if (currentPoint) {
+        lastMouseScenePointRef.current = { x: currentPoint.x, y: currentPoint.y };
+      }
+
       // Throttled Real-Time Cursor streaming (world coordinates)
       const now = Date.now();
       if (now - cursorThrottleRef.current > 30) {
-        const point = canvas.getScenePoint ? canvas.getScenePoint(opt.e) : (canvas as any).getPointer(opt.e);
-        if (point) {
-          socketService.emitCursorMove(Math.round(point.x), Math.round(point.y));
+        if (currentPoint) {
+          socketService.emitCursorMove(Math.round(currentPoint.x), Math.round(currentPoint.y));
           cursorThrottleRef.current = now;
         }
       }
@@ -1030,12 +1039,95 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
       }
     };
 
+    // Clipboard Paste Listener (Ctrl+V Image Paste)
+    const handlePaste = (e: ClipboardEvent) => {
+      const activeEl = document.activeElement;
+      if (
+        activeEl &&
+        (activeEl.tagName === 'INPUT' ||
+          activeEl.tagName === 'TEXTAREA' ||
+          activeEl.getAttribute('contenteditable') === 'true')
+      ) {
+        return;
+      }
+      const activeObj = canvas.getActiveObject();
+      if (activeObj && (activeObj as any).isEditing) {
+        return;
+      }
+
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.type.indexOf('image') !== -1) {
+          e.preventDefault();
+          const file = item.getAsFile();
+          if (!file) continue;
+
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            const dataUrl = event.target?.result as string;
+            if (!dataUrl) return;
+            const pastePos = lastMouseScenePointRef.current;
+            addImageFromURLRef.current(dataUrl, pastePos?.x, pastePos?.y);
+          };
+          reader.readAsDataURL(file);
+          break;
+        }
+      }
+    };
+
+    // Drag-and-Drop Image Listener
+    const container = containerRef.current;
+    const handleDragOver = (e: DragEvent) => {
+      e.preventDefault();
+      if (e.dataTransfer) {
+        e.dataTransfer.dropEffect = 'copy';
+      }
+    };
+
+    const handleDrop = (e: DragEvent) => {
+      e.preventDefault();
+      const files = e.dataTransfer?.files;
+      if (!files || files.length === 0) return;
+
+      const dropPoint = canvas.getScenePoint ? canvas.getScenePoint(e) : (canvas as any).getPointer(e);
+      let posX = dropPoint ? dropPoint.x : undefined;
+      let posY = dropPoint ? dropPoint.y : undefined;
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (file.type.startsWith('image/')) {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            const dataUrl = event.target?.result as string;
+            if (!dataUrl) return;
+            addImageFromURLRef.current(dataUrl, posX, posY);
+            if (posX !== undefined) posX += 25;
+            if (posY !== undefined) posY += 25;
+          };
+          reader.readAsDataURL(file);
+        }
+      }
+    };
+
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('paste', handlePaste);
+    if (container) {
+      container.addEventListener('dragover', handleDragOver);
+      container.addEventListener('drop', handleDrop);
+    }
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('paste', handlePaste);
+      if (container) {
+        container.removeEventListener('dragover', handleDragOver);
+        container.removeEventListener('drop', handleDrop);
+      }
       resizeObserver.disconnect();
       canvas.dispose();
       canvasRef.current = null;
@@ -1644,6 +1736,56 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
   }, [resetZoom, setZoom]);
   fitToContentRef.current = fitToContent;
 
+  // Dynamic Image Ingestion (Upload, Paste, Drag & Drop)
+  const addImageFromURL = useCallback(async (dataUrl: string, x?: number, y?: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const center = getCanvasCenter();
+    const targetX = x !== undefined ? x : center.x;
+    const targetY = y !== undefined ? y : center.y;
+
+    try {
+      const img = await FabricImage.fromURL(dataUrl, { crossOrigin: 'anonymous' });
+      if (!img) return;
+
+      const maxW = 550;
+      const maxH = 450;
+      const origW = img.width || 400;
+      const origH = img.height || 300;
+      let scale = 1;
+      if (origW > maxW || origH > maxH) {
+        scale = Math.min(maxW / origW, maxH / origH);
+      }
+
+      const id = nanoid(8);
+      img.set({
+        id,
+        left: targetX - (origW * scale) / 2,
+        top: targetY - (origH * scale) / 2,
+        scaleX: scale,
+        scaleY: scale,
+        cornerColor: '#6366f1',
+        cornerStrokeColor: '#ffffff',
+        cornerStyle: 'circle',
+        borderColor: '#6366f1',
+        borderDashArray: [4, 4],
+        transparentCorners: false,
+        cornerSize: 10,
+      } as any);
+
+      canvas.add(img);
+      canvas.setActiveObject(img);
+      canvas.requestRenderAll();
+      saveHistory();
+      socketService.emitObjectAdded((img as any).toObject(['id', 'name', 'shadow', 'rx', 'ry', 'src']));
+      setHasObjects(true);
+    } catch (err) {
+      console.error('Failed to load image into canvas:', err);
+    }
+  }, [getCanvasCenter, saveHistory, setHasObjects]);
+  addImageFromURLRef.current = addImageFromURL;
+
   // High-Resolution PNG Export
   const exportPNG = useCallback(() => {
     const canvas = canvasRef.current;
@@ -1653,9 +1795,41 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
       multiplier: 2,
     });
     const link = document.createElement('a');
-    link.download = `collabspace-${Date.now()}.png`;
+    link.download = `collabspace-${(boardTitle || 'whiteboard').toLowerCase().replace(/\s+/g, '-')}-${Date.now()}.png`;
     link.href = dataURL;
     link.click();
+  }, [boardTitle]);
+
+  // Lossless Vector SVG Export
+  const exportSVG = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const svgStr = canvas.toSVG();
+    const blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.download = `collabspace-${(boardTitle || 'whiteboard').toLowerCase().replace(/\s+/g, '-')}-${Date.now()}.svg`;
+    link.href = url;
+    link.click();
+    URL.revokeObjectURL(url);
+  }, [boardTitle]);
+
+  // Copy PNG image directly to system clipboard
+  const copyCanvasToClipboard = useCallback(async (): Promise<boolean> => {
+    const canvas = canvasRef.current;
+    if (!canvas) return false;
+    try {
+      const dataURL = canvas.toDataURL({ format: 'png', multiplier: 2 });
+      const res = await fetch(dataURL);
+      const blob = await res.blob();
+      await navigator.clipboard.write([
+        new ClipboardItem({ 'image/png': blob })
+      ]);
+      return true;
+    } catch (err) {
+      console.error('Failed to copy canvas image to clipboard:', err);
+      return false;
+    }
   }, []);
 
   // Lossless JSON Export
@@ -1666,11 +1840,11 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     const blob = new Blob([jsonStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.download = `collabspace-${Date.now()}.json`;
+    link.download = `collabspace-${(boardTitle || 'whiteboard').toLowerCase().replace(/\s+/g, '-')}-${Date.now()}.json`;
     link.href = url;
     link.click();
     URL.revokeObjectURL(url);
-  }, []);
+  }, [boardTitle]);
 
   return {
     canvasRef,
@@ -1681,6 +1855,7 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     addStickyNote,
     addText,
     addArrow,
+    addImageFromURL,
     changeSelectedFill,
     changeSelectedStroke,
     changeSelectedStrokeWidth,
@@ -1701,7 +1876,9 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     undo,
     redo,
     exportPNG,
+    exportSVG,
     exportJSON,
+    copyCanvasToClipboard,
     tidyUp,
   };
 }
