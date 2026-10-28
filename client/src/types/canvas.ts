@@ -7,7 +7,8 @@ export type ToolType =
   | 'sticky'
   | 'pencil'
   | 'text'
-  | 'arrow';
+  | 'arrow'
+  | 'image';
 
 export interface ColorOption {
   value: string;
