@@ -1,18 +1,56 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   Sparkles, 
   Share2, 
   Download, 
   Sun, 
-  Moon 
+  Moon,
+  FileImage,
+  FileCode,
+  Copy,
+  Check
 } from 'lucide-react';
 import { useCanvasStore } from '../../store/canvasStore';
 
 interface TopBarProps {
-  onExport: () => void;
+  onExportPNG: () => void;
+  onExportSVG: () => void;
+  onExportJSON: () => void;
+  onCopyImage: () => Promise<boolean>;
 }
 
-export const TopBar: React.FC<TopBarProps> = ({ onExport }) => {
+export const TopBar: React.FC<TopBarProps> = ({ 
+  onExportPNG,
+  onExportSVG,
+  onExportJSON,
+  onCopyImage,
+}) => {
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+  const [copiedSuccess, setCopiedSuccess] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setIsExportMenuOpen(false);
+      }
+    };
+    if (isExportMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isExportMenuOpen]);
+
+  const handleCopy = async () => {
+    const success = await onCopyImage();
+    if (success) {
+      setCopiedSuccess(true);
+      setTimeout(() => setCopiedSuccess(false), 2000);
+    }
+  };
+
   const { 
     boardTitle, 
     setBoardTitle, 
@@ -157,16 +195,89 @@ export const TopBar: React.FC<TopBarProps> = ({ onExport }) => {
           )}
         </button>
 
-        {/* Export High-Res PNG Button */}
-        <button
-          type="button"
-          className="dock-tool-btn"
-          style={{ width: '34px', height: '34px' }}
-          onClick={onExport}
-          title="Export as 2x Retina PNG"
-        >
-          <Download size={16} />
-        </button>
+        {/* Export & Share Dropdown Menu */}
+        <div style={{ position: 'relative' }} ref={exportMenuRef}>
+          <button
+            type="button"
+            className={`dock-tool-btn ${isExportMenuOpen ? 'active' : ''}`}
+            style={{ width: '34px', height: '34px' }}
+            onClick={() => setIsExportMenuOpen((prev) => !prev)}
+            title="Export & Download Canvas"
+          >
+            <Download size={16} />
+          </button>
+
+          {isExportMenuOpen && (
+            <div className="export-dropdown-menu glass-panel">
+              <div className="export-menu-header">Export Canvas</div>
+
+              <button
+                type="button"
+                className="export-menu-item"
+                onClick={() => {
+                  onExportPNG();
+                  setIsExportMenuOpen(false);
+                }}
+              >
+                <FileImage size={15} style={{ color: '#818cf8', flexShrink: 0 }} />
+                <div className="export-item-text">
+                  <span className="export-item-title">PNG Image</span>
+                  <span className="export-item-desc">2x Retina raster (standard)</span>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                className="export-menu-item"
+                onClick={() => {
+                  onExportSVG();
+                  setIsExportMenuOpen(false);
+                }}
+              >
+                <FileCode size={15} style={{ color: '#38bdf8', flexShrink: 0 }} />
+                <div className="export-item-text">
+                  <span className="export-item-title">Vector SVG</span>
+                  <span className="export-item-desc">Infinite zoom vector graphic</span>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                className="export-menu-item"
+                onClick={handleCopy}
+              >
+                {copiedSuccess ? (
+                  <Check size={15} style={{ color: '#10b981', flexShrink: 0 }} />
+                ) : (
+                  <Copy size={15} style={{ color: '#f59e0b', flexShrink: 0 }} />
+                )}
+                <div className="export-item-text">
+                  <span className="export-item-title">
+                    {copiedSuccess ? 'Copied to Clipboard!' : 'Copy to Clipboard'}
+                  </span>
+                  <span className="export-item-desc">Paste directly into docs & chat</span>
+                </div>
+              </button>
+
+              <div className="export-menu-divider" />
+
+              <button
+                type="button"
+                className="export-menu-item"
+                onClick={() => {
+                  onExportJSON();
+                  setIsExportMenuOpen(false);
+                }}
+              >
+                <Download size={15} style={{ color: '#ec4899', flexShrink: 0 }} />
+                <div className="export-item-text">
+                  <span className="export-item-title">Project JSON</span>
+                  <span className="export-item-desc">Lossless editable board backup</span>
+                </div>
+              </button>
+            </div>
+          )}
+        </div>
 
         {/* Theme Toggle */}
         <button

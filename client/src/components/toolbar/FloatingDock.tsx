@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { 
   MousePointer2, 
   Hand, 
@@ -9,6 +9,7 @@ import {
   Pencil, 
   Type, 
   MoveRight, 
+  Image as ImageIcon,
   Sparkles, 
   LayoutGrid,
   Undo2, 
@@ -24,16 +25,19 @@ interface FloatingDockProps {
   onAddStickyNote?: () => void;
   onAddText?: () => void;
   onAddArrow?: () => void;
+  onUploadImage?: (dataUrl: string) => void;
   onUndo: () => void;
   onRedo: () => void;
   onTidyUp?: () => void;
 }
 
 export const FloatingDock: React.FC<FloatingDockProps> = ({
+  onUploadImage,
   onUndo,
   onRedo,
   onTidyUp,
 }) => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { 
     activeTool, 
     setActiveTool, 
@@ -44,6 +48,22 @@ export const FloatingDock: React.FC<FloatingDockProps> = ({
 
   const handleToolSelect = (tool: ToolType) => {
     setActiveTool(tool);
+  };
+
+  const handleImageUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !onUploadImage) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      if (dataUrl) onUploadImage(dataUrl);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
   };
 
   return (
@@ -141,6 +161,24 @@ export const FloatingDock: React.FC<FloatingDockProps> = ({
         <MoveRight size={16} />
         <span className="tool-tooltip">Magnetic Connector <kbd>A</kbd></span>
       </button>
+
+      {/* Insert Image */}
+      <button
+        type="button"
+        className="dock-tool-btn"
+        onClick={handleImageUploadClick}
+        aria-label="Insert Image"
+      >
+        <ImageIcon size={16} />
+        <span className="tool-tooltip">Image <kbd>Ctrl+V</kbd></span>
+      </button>
+      <input
+        type="file"
+        ref={fileInputRef}
+        accept="image/*"
+        style={{ display: 'none' }}
+        onChange={handleFileSelected}
+      />
 
       <div className="dock-divider" />
 
