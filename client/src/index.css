@@ -135,11 +135,11 @@ input, textarea {
   top: 14px;
   left: 16px;
   right: 16px;
-  height: 48px;
+  height: 42px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 12px;
+  padding: 0;
   z-index: 20;
   pointer-events: none; /* Let clicks fall through except children */
 }
@@ -148,43 +148,48 @@ input, textarea {
   pointer-events: auto;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  height: 38px;
 }
 
 .brand-badge {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  border-radius: var(--radius-md);
+  gap: 6px;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
   font-weight: 700;
-  font-size: 14px;
+  font-size: 13px;
   letter-spacing: -0.2px;
   color: var(--text-primary);
+  white-space: nowrap;
 }
 
 .brand-icon-wrapper {
-  width: 26px;
-  height: 26px;
+  width: 22px;
+  height: 22px;
   border-radius: 6px;
   background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
   display: flex;
   align-items: center;
   justify-content: center;
   color: #fff;
-  box-shadow: 0 2px 8px var(--accent-glow);
+  box-shadow: 0 2px 6px var(--accent-glow);
 }
 
 .board-title-input {
   background: transparent;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
-  padding: 6px 10px;
+  padding: 4px 6px;
   border-radius: var(--radius-sm);
-  max-width: 200px;
+  max-width: 130px;
   color: var(--text-primary);
   border: 1px solid transparent;
-  transition: border-color var(--transition-fast);
+  transition: all var(--transition-fast);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .board-title-input:hover {
@@ -194,9 +199,41 @@ input, textarea {
 .board-title-input:focus {
   background: var(--bg-hover);
   border-color: var(--border-active);
+  max-width: 180px;
 }
 
-/* Floating Bottom Dock Toolbar */
+.live-status-pill {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.6);
+  animation: pulseDot 2s infinite ease-in-out;
+}
+
+.status-dot.offline {
+  background: #ef4444;
+  box-shadow: none;
+  animation: none;
+}
+
+@keyframes pulseDot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.8); }
+}
+
+/* Floating Top Dock Toolbar (Excalidraw UX) */
 .floating-dock-container {
   position: absolute;
   top: 14px;
@@ -205,17 +242,21 @@ input, textarea {
   z-index: 20;
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 6px;
-  border-radius: var(--radius-full);
+  gap: 2px;
+  padding: 3px 5px;
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.12);
 }
 
 .dock-tool-btn {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius-full);
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-sm);
   color: var(--text-secondary);
   position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .dock-tool-btn:hover {
@@ -226,14 +267,14 @@ input, textarea {
 .dock-tool-btn.active {
   color: #ffffff;
   background: var(--accent-primary);
-  box-shadow: 0 4px 12px var(--accent-glow);
+  box-shadow: 0 2px 8px var(--accent-glow);
 }
 
 .dock-divider {
   width: 1px;
-  height: 24px;
+  height: 18px;
   background: var(--border-subtle);
-  margin: 0 4px;
+  margin: 0 2px;
 }
 
 /* Tooltip Badge */
@@ -433,16 +474,16 @@ input, textarea {
   box-shadow: 0 0 0 2px var(--accent-primary);
 }
 
-/* Canvas Viewport Controls (Top-Left under Title) */
+/* Canvas Viewport Controls (Bottom-Left - Excalidraw UX) */
 .canvas-viewport-controls {
   position: absolute;
-  top: 68px;
-  left: 16px;
+  bottom: 20px;
+  left: 20px;
   z-index: 20;
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 6px;
+  gap: 3px;
+  padding: 3px 5px;
   border-radius: var(--radius-md);
 }
 

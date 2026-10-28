@@ -125,7 +125,7 @@ export function App() {
         onPanBy={panBy}
       />
 
-      {/* Top Viewport Zoom Controls */}
+      {/* Bottom Viewport Zoom Controls */}
       <CanvasControls
         onZoomIn={zoomIn}
         onZoomOut={zoomOut}
