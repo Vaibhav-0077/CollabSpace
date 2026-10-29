@@ -8,7 +8,8 @@ import {
   FileImage,
   FileCode,
   Copy,
-  Check
+  Check,
+  Eye
 } from 'lucide-react';
 import { useCanvasStore } from '../../store/canvasStore';
 
@@ -61,7 +62,9 @@ export const TopBar: React.FC<TopBarProps> = ({
     collaborators,
     mySocketId,
     isConnected,
-    setIsShareModalOpen 
+    setIsShareModalOpen,
+    followingSocketId,
+    setFollowingSocketId
   } = useCanvasStore();
 
   const otherCollaborators = Object.values(collaborators).filter(
@@ -108,30 +111,65 @@ export const TopBar: React.FC<TopBarProps> = ({
         {/* Remote Collaborator Avatars */}
         {otherCollaborators.length > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', marginRight: '4px', gap: '-6px' }}>
-            {otherCollaborators.slice(0, 3).map((collab) => (
-              <div
-                key={collab.socketId}
-                title={`${collab.nickname} is collaborating`}
-                style={{
-                  width: '24px',
-                  height: '24px',
-                  borderRadius: '50%',
-                  backgroundColor: collab.color || '#8b5cf6',
-                  color: '#ffffff',
-                  fontSize: '11px',
-                  fontWeight: 700,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  border: '2px solid var(--bg-surface-solid)',
-                  marginLeft: '-6px',
-                  boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
-                }}
-              >
-                {collab.nickname.charAt(0).toUpperCase()}
-              </div>
-            ))}
-            {otherCollaborators.length > 3 && (
+            {otherCollaborators.slice(0, 4).map((collab) => {
+              const isFollowing = followingSocketId === collab.socketId;
+              return (
+                <button
+                  type="button"
+                  key={collab.socketId}
+                  onClick={() => {
+                    if (isFollowing) {
+                      setFollowingSocketId(null);
+                    } else {
+                      setFollowingSocketId(collab.socketId);
+                    }
+                  }}
+                  className={`collab-avatar-btn ${isFollowing ? 'is-following' : ''}`}
+                  title={isFollowing ? `Stop following ${collab.nickname}` : `Click to follow ${collab.nickname}'s view`}
+                  style={{
+                    width: '26px',
+                    height: '26px',
+                    borderRadius: '50%',
+                    backgroundColor: collab.color || '#8b5cf6',
+                    color: '#ffffff',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    border: isFollowing ? '2px solid #ec4899' : '2px solid var(--bg-surface-solid)',
+                    marginLeft: '-6px',
+                    cursor: 'pointer',
+                    position: 'relative',
+                    padding: 0,
+                    outline: 'none',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  {collab.nickname.charAt(0).toUpperCase()}
+                  {isFollowing && (
+                    <span 
+                      style={{
+                        position: 'absolute',
+                        bottom: '-3px',
+                        right: '-3px',
+                        width: '12px',
+                        height: '12px',
+                        borderRadius: '50%',
+                        backgroundColor: '#ec4899',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        border: '1px solid #ffffff',
+                      }}
+                    >
+                      <Eye size={7} color="#ffffff" strokeWidth={3} />
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+            {otherCollaborators.length > 4 && (
               <div
                 style={{
                   width: '24px',
@@ -148,7 +186,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                   marginLeft: '-6px',
                 }}
               >
-                +{otherCollaborators.length - 3}
+                +{otherCollaborators.length - 4}
               </div>
             )}
           </div>

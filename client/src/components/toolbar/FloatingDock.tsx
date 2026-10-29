@@ -10,6 +10,7 @@ import {
   Type, 
   MoveRight, 
   Image as ImageIcon,
+  Flame,
   Sparkles, 
   LayoutGrid,
   Undo2, 
@@ -179,6 +180,18 @@ export const FloatingDock: React.FC<FloatingDockProps> = ({
         style={{ display: 'none' }}
         onChange={handleFileSelected}
       />
+
+      {/* Live Laser Pointer Tool */}
+      <button
+        type="button"
+        className={`dock-tool-btn ${activeTool === 'laser' ? 'active' : ''}`}
+        onClick={() => setActiveTool('laser')}
+        aria-label="Laser Pointer"
+        style={{ color: activeTool === 'laser' ? '#ef4444' : undefined }}
+      >
+        <Flame size={16} />
+        <span className="tool-tooltip">Laser Pointer <kbd>L</kbd></span>
+      </button>
 
       <div className="dock-divider" />
 
