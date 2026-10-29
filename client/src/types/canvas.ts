@@ -8,7 +8,8 @@ export type ToolType =
   | 'pencil'
   | 'text'
   | 'arrow'
-  | 'image';
+  | 'image'
+  | 'laser';
 
 export interface ColorOption {
   value: string;

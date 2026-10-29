@@ -8,6 +8,8 @@ import { CanvasControls } from './components/canvas/CanvasControls';
 import { CanvasScrollbars } from './components/canvas/CanvasScrollbars';
 import { CanvasMinimap } from './components/canvas/CanvasMinimap';
 import { RemoteCursors } from './components/collaboration/RemoteCursors';
+import { LaserOverlay } from './components/collaboration/LaserOverlay';
+import { FollowBanner } from './components/collaboration/FollowBanner';
 import { QuickStartCard } from './components/modals/QuickStartCard';
 import { ShareModal } from './components/modals/ShareModal';
 import { AIPromptModal } from './components/modals/AIPromptModal';
@@ -87,6 +89,9 @@ export function App() {
         onCopyImage={copyCanvasToClipboard}
       />
 
+      {/* "Follow Me" Presenter Mode Floating Banner */}
+      <FollowBanner />
+
       {/* Canvas Viewport Container */}
       <div
         ref={containerRef}
@@ -96,6 +101,9 @@ export function App() {
 
       {/* Live Multiplayer Remote Cursors Overlay */}
       <RemoteCursors canvasVpt={canvasVpt} zoom={zoom} />
+
+      {/* Real-Time Glowing Laser Pointer & Spotlight Overlay */}
+      <LaserOverlay canvasVpt={canvasVpt} zoom={zoom} />
 
       {/* Disappearing Beginner Guide on Blank Canvas */}
       <QuickStartCard />

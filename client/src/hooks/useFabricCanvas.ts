@@ -31,6 +31,7 @@ import {
   type AnchorType 
 } from '../utils/connectors';
 import { tidyUpCanvasObjects } from '../utils/tidyUp';
+import { emitLocalLaserPoint } from '../components/collaboration/LaserOverlay';
 
 // Customize Fabric defaults for an ultra-premium feel
 FabricObject.prototype.set({
@@ -102,6 +103,42 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
   const resetZoomRef = useRef<() => void>(() => {});
   const lastMouseScenePointRef = useRef<{ x: number; y: number } | null>(null);
   const addImageFromURLRef = useRef<(dataUrl: string, x?: number, y?: number) => Promise<void>>(async () => {});
+
+  // Laser Pointer & Spotlight State
+  const isLaserActiveRef = useRef<boolean>(false);
+  const laserThrottleRef = useRef<number>(0);
+
+  // "Follow Me" Viewport Synchronizer
+  const viewportBroadcastThrottleRef = useRef<number>(0);
+
+  const breakFollowMode = useCallback(() => {
+    if (useCanvasStore.getState().followingSocketId !== null) {
+      useCanvasStore.getState().setFollowingSocketId(null);
+    }
+  }, []);
+  const breakFollowModeRef = useRef(breakFollowMode);
+  breakFollowModeRef.current = breakFollowMode;
+
+  const broadcastViewport = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const now = Date.now();
+    if (now - viewportBroadcastThrottleRef.current < 40) return;
+    viewportBroadcastThrottleRef.current = now;
+
+    const vpt = canvas.viewportTransform;
+    const zoom = canvas.getZoom();
+    const sceneCenterX = (canvas.getWidth() / 2 - vpt[4]) / zoom;
+    const sceneCenterY = (canvas.getHeight() / 2 - vpt[5]) / zoom;
+
+    socketService.emitViewportMove(
+      Math.round(sceneCenterX * 10) / 10,
+      Math.round(sceneCenterY * 10) / 10,
+      Math.round(zoom * 1000) / 1000
+    );
+  }, []);
+  const broadcastViewportRef = useRef(broadcastViewport);
+  broadcastViewportRef.current = broadcastViewport;
 
   // Helper to record history snapshot
   const saveHistory = useCallback(() => {
@@ -207,6 +244,8 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
       e.preventDefault();
       e.stopPropagation();
 
+      breakFollowModeRef.current();
+
       // Zoom when Ctrl / Meta is pressed (or trackpad pinch gesture)
       if (e.ctrlKey || e.metaKey) {
         const delta = e.deltaY;
@@ -219,6 +258,7 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
         canvas.zoomToPoint(point, currentZoom);
         setZoom(Math.round(currentZoom * 100) / 100);
         setCanvasVpt([...canvas.viewportTransform]);
+        broadcastViewportRef.current();
         if (canvas.getActiveObject()) {
           updateSelectionStateRef.current();
         }
@@ -235,6 +275,7 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
 
       canvas.relativePan(new Point(-dx, -dy));
       setCanvasVpt([...canvas.viewportTransform]);
+      broadcastViewportRef.current();
       if (canvas.getActiveObject()) {
         updateSelectionStateRef.current();
       }
@@ -245,6 +286,7 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     const handleMouseDown = (opt: any) => {
       const e = opt.e;
       if (isSpacePressedRef.current || e.button === 1 || activeToolRef.current === 'hand') {
+        breakFollowModeRef.current();
         isPanningRef.current = true;
         canvas.selection = false;
         lastPanPosRef.current = { x: e.clientX, y: e.clientY };
@@ -258,6 +300,15 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
       const currentTool = activeToolRef.current;
       const point = canvas.getScenePoint ? canvas.getScenePoint(opt.e) : (canvas as any).getPointer(opt.e);
       if (!point) return;
+
+      // Laser Pointer / Spotlight Tool: Click to pulse or start drawing glowing presentation beam
+      if (currentTool === 'laser') {
+        isLaserActiveRef.current = true;
+        const color = userColor || '#ef4444';
+        emitLocalLaserPoint(point.x, point.y, color);
+        socketService.emitLaserPointer(Math.round(point.x), Math.round(point.y), color);
+        return;
+      }
 
       // Excalidraw Text Tool: Click to place black editable text directly at point
       if (currentTool === 'text') {
@@ -395,12 +446,14 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     const handleMouseMove = (opt: any) => {
       // Pan movement
       if (isPanningRef.current) {
+        breakFollowModeRef.current();
         const e = opt.e;
         const deltaX = e.clientX - lastPanPosRef.current.x;
         const deltaY = e.clientY - lastPanPosRef.current.y;
         lastPanPosRef.current = { x: e.clientX, y: e.clientY };
         canvas.relativePan(new Point(deltaX, deltaY));
         setCanvasVpt([...canvas.viewportTransform]);
+        broadcastViewportRef.current();
         if (canvas.getActiveObject()) {
           updateSelectionStateRef.current();
         }
@@ -472,12 +525,25 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
           cursorThrottleRef.current = now;
         }
       }
+
+      // Stream glowing laser pointer points when laser tool is actively drawn
+      if (activeToolRef.current === 'laser' && currentPoint) {
+        if (isLaserActiveRef.current && now - laserThrottleRef.current > 16) {
+          laserThrottleRef.current = now;
+          const color = userColor || '#ef4444';
+          emitLocalLaserPoint(currentPoint.x, currentPoint.y, color);
+          socketService.emitLaserPointer(Math.round(currentPoint.x), Math.round(currentPoint.y), color);
+        }
+      }
     };
 
     // 3. Mouse Up: Commit created shape, make selectable, and switch to select tool
     const handleMouseUp = () => {
       clearGuidelines(canvas);
       clearAnchorPoints(canvas);
+      if (activeToolRef.current === 'laser') {
+        isLaserActiveRef.current = false;
+      }
       if (isPanningRef.current) {
         isPanningRef.current = false;
         canvas.selection = activeToolRef.current === 'select';
@@ -880,6 +946,23 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
       setHasObjects(canvas.getObjects().length > 0);
     };
 
+    // "Follow Me" Viewport Synchronizer (follows presenter camera seamlessly)
+    socketService.onUserViewport = (data) => {
+      const currentFollowingId = useCanvasStore.getState().followingSocketId;
+      if (currentFollowingId === data.socketId) {
+        const targetZoom = data.zoom;
+        const screenCenterX = canvas.getWidth() / 2;
+        const screenCenterY = canvas.getHeight() / 2;
+        const targetVpt4 = screenCenterX - data.sceneCenterX * targetZoom;
+        const targetVpt5 = screenCenterY - data.sceneCenterY * targetZoom;
+
+        canvas.setViewportTransform([targetZoom, 0, 0, targetZoom, targetVpt4, targetVpt5]);
+        setCanvasVpt([...canvas.viewportTransform]);
+        setZoom(Math.round(targetZoom * 100) / 100);
+        canvas.requestRenderAll();
+      }
+    };
+
     // Resize observer
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
@@ -943,37 +1026,51 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
           const scrollStep = e.shiftKey ? 180 : 60;
           if (e.key === 'ArrowUp') {
             e.preventDefault();
+            breakFollowModeRef.current();
             canvas.relativePan(new Point(0, scrollStep));
             setCanvasVpt([...canvas.viewportTransform]);
+            broadcastViewportRef.current();
             return;
           } else if (e.key === 'ArrowDown') {
             e.preventDefault();
+            breakFollowModeRef.current();
             canvas.relativePan(new Point(0, -scrollStep));
             setCanvasVpt([...canvas.viewportTransform]);
+            broadcastViewportRef.current();
             return;
           } else if (e.key === 'ArrowLeft') {
             e.preventDefault();
+            breakFollowModeRef.current();
             canvas.relativePan(new Point(scrollStep, 0));
             setCanvasVpt([...canvas.viewportTransform]);
+            broadcastViewportRef.current();
             return;
           } else if (e.key === 'ArrowRight') {
             e.preventDefault();
+            breakFollowModeRef.current();
             canvas.relativePan(new Point(-scrollStep, 0));
             setCanvasVpt([...canvas.viewportTransform]);
+            broadcastViewportRef.current();
             return;
           } else if (e.key === 'PageUp') {
             e.preventDefault();
+            breakFollowModeRef.current();
             canvas.relativePan(new Point(0, 300));
             setCanvasVpt([...canvas.viewportTransform]);
+            broadcastViewportRef.current();
             return;
           } else if (e.key === 'PageDown') {
             e.preventDefault();
+            breakFollowModeRef.current();
             canvas.relativePan(new Point(0, -300));
             setCanvasVpt([...canvas.viewportTransform]);
+            broadcastViewportRef.current();
             return;
           } else if (e.key === 'Home') {
             e.preventDefault();
+            breakFollowModeRef.current();
             resetZoomRef.current();
+            broadcastViewportRef.current();
             return;
           }
         } else if (!(activeObj as any).isEditing) {
@@ -1026,6 +1123,15 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
         else if (k === 'p') setActiveTool('pencil');
         else if (k === 't') setActiveTool('text');
         else if (k === 'a') setActiveTool('arrow');
+        else if (k === 'l') setActiveTool('laser');
+        else if (e.key === 'Escape') {
+          if (useCanvasStore.getState().followingSocketId !== null) {
+            useCanvasStore.getState().setFollowingSocketId(null);
+          }
+          if (activeToolRef.current === 'laser') {
+            setActiveTool('select');
+          }
+        }
       }
     };
 
@@ -1129,6 +1235,7 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
         container.removeEventListener('drop', handleDrop);
       }
       resizeObserver.disconnect();
+      socketService.onUserViewport = undefined;
       canvas.dispose();
       canvasRef.current = null;
       if (canvasEl.parentNode) {
@@ -1156,6 +1263,13 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
       canvas.selection = false;
       canvas.defaultCursor = 'grab';
       canvas.setCursor('grab');
+    } else if (activeTool === 'laser') {
+      canvas.isDrawingMode = false;
+      canvas.selection = false;
+      canvas.discardActiveObject();
+      canvas.defaultCursor = 'crosshair';
+      canvas.setCursor('crosshair');
+      canvas.requestRenderAll();
     } else if (['rectangle', 'circle', 'diamond', 'sticky', 'arrow', 'text'].includes(activeTool)) {
       canvas.isDrawingMode = false;
       canvas.selection = false;
@@ -1634,57 +1748,67 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
   const zoomIn = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    breakFollowMode();
     let nextZoom = canvas.getZoom() * 1.2;
     if (nextZoom > 5) nextZoom = 5;
     const center = canvas.getCenterPoint();
     canvas.zoomToPoint(new Point(center.x, center.y), nextZoom);
     setZoom(Math.round(nextZoom * 100) / 100);
     setCanvasVpt([...canvas.viewportTransform]);
-  }, [setZoom]);
+    broadcastViewport();
+  }, [setZoom, breakFollowMode, broadcastViewport]);
 
   const zoomOut = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    breakFollowMode();
     let nextZoom = canvas.getZoom() / 1.2;
     if (nextZoom < 0.1) nextZoom = 0.1;
     const center = canvas.getCenterPoint();
     canvas.zoomToPoint(new Point(center.x, center.y), nextZoom);
     setZoom(Math.round(nextZoom * 100) / 100);
     setCanvasVpt([...canvas.viewportTransform]);
-  }, [setZoom]);
+    broadcastViewport();
+  }, [setZoom, breakFollowMode, broadcastViewport]);
 
   const resetZoom = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    breakFollowMode();
     canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
     setZoom(1);
     setCanvasVpt([1, 0, 0, 1, 0, 0]);
     canvas.requestRenderAll();
-  }, [setZoom]);
+    broadcastViewport();
+  }, [setZoom, breakFollowMode, broadcastViewport]);
   resetZoomRef.current = resetZoom;
 
   const panBy = useCallback((dx: number, dy: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    breakFollowMode();
     canvas.relativePan(new Point(dx, dy));
     setCanvasVpt([...canvas.viewportTransform]);
+    broadcastViewport();
     if (canvas.getActiveObject()) {
       updateSelectionStateRef.current();
     }
-  }, []);
+  }, [breakFollowMode, broadcastViewport]);
 
   const setViewportPos = useCallback((vptX: number, vptY: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    breakFollowMode();
     const vpt = [...canvas.viewportTransform];
     vpt[4] = vptX;
     vpt[5] = vptY;
     canvas.setViewportTransform(vpt as [number, number, number, number, number, number]);
     setCanvasVpt([...vpt]);
+    broadcastViewport();
     if (canvas.getActiveObject()) {
       updateSelectionStateRef.current();
     }
-  }, []);
+  }, [breakFollowMode, broadcastViewport]);
 
   const fitToContent = useCallback(() => {
     const canvas = canvasRef.current;

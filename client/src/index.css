@@ -813,3 +813,136 @@ input, textarea {
   margin: 4px 6px;
 }
 
+/* ==========================================================================
+   Real-Time Collaboration: Follow Me & Laser Pointer
+   ========================================================================== */
+
+/* Follow Me Top Floating Banner */
+.follow-banner {
+  position: absolute;
+  top: 56px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 6px 14px;
+  border-radius: var(--radius-full);
+  background: var(--bg-surface-elevated);
+  border: 1px solid rgba(236, 72, 153, 0.4);
+  box-shadow: 0 8px 24px rgba(236, 72, 153, 0.15), 0 4px 12px rgba(0, 0, 0, 0.2);
+  animation: followBannerSlideIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: auto;
+}
+
+@keyframes followBannerSlideIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -10px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.follow-banner-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.follow-avatar-bubble {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  border: 1.5px solid #ffffff;
+}
+
+.follow-banner-info {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.follow-banner-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.follow-eye-icon {
+  color: #ec4899;
+  animation: eyeBlink 2s infinite ease-in-out;
+}
+
+@keyframes eyeBlink {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(0.9); }
+}
+
+.follow-banner-subtitle {
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
+
+.follow-banner-subtitle kbd {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-medium);
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-size: 9px;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+}
+
+.follow-stop-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  background: rgba(236, 72, 153, 0.15);
+  border: 1px solid rgba(236, 72, 153, 0.3);
+  color: #ec4899;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.follow-stop-btn:hover {
+  background: #ec4899;
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(236, 72, 153, 0.4);
+}
+
+/* Collaborator Avatar Button in TopBar */
+.collab-avatar-btn:hover {
+  transform: translateY(-2px) scale(1.08);
+  z-index: 10;
+}
+
+.collab-avatar-btn.is-following {
+  animation: followingPulse 2s infinite ease-in-out;
+}
+
+@keyframes followingPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 2px var(--bg-surface-solid), 0 0 0 4px #ec4899;
+  }
+  50% {
+    box-shadow: 0 0 0 2px var(--bg-surface-solid), 0 0 0 6px rgba(236, 72, 153, 0.5);
+  }
+}
+

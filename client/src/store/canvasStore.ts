@@ -44,6 +44,7 @@ interface CanvasStoreState {
   mySocketId: string | null;
   collaborators: Record<string, CollaboratorInfo>;
   remoteLocks: Record<string, RemoteLockInfo>;
+  followingSocketId: string | null;
 
   // Actions
   setActiveTool: (tool: ToolType) => void;
@@ -73,6 +74,7 @@ interface CanvasStoreState {
   updateCollaboratorCursor: (socketId: string, x: number, y: number) => void;
   setRemoteLock: (lock: RemoteLockInfo) => void;
   removeRemoteLock: (objectId: string) => void;
+  setFollowingSocketId: (id: string | null) => void;
 }
 
 export const useCanvasStore = create<CanvasStoreState>((set) => {
@@ -109,6 +111,7 @@ export const useCanvasStore = create<CanvasStoreState>((set) => {
     mySocketId: null,
     collaborators: {},
     remoteLocks: {},
+    followingSocketId: null,
 
     setActiveTool: (activeTool) => set({ activeTool }),
     setSelectedFill: (selectedFill) => set({ selectedFill }),
@@ -150,7 +153,10 @@ export const useCanvasStore = create<CanvasStoreState>((set) => {
     removeCollaborator: (socketId) => set((state) => {
       const updated = { ...state.collaborators };
       delete updated[socketId];
-      return { collaborators: updated };
+      return { 
+        collaborators: updated,
+        followingSocketId: state.followingSocketId === socketId ? null : state.followingSocketId,
+      };
     }),
     updateCollaboratorCursor: (socketId, x, y) => set((state) => {
       const user = state.collaborators[socketId];
@@ -170,5 +176,6 @@ export const useCanvasStore = create<CanvasStoreState>((set) => {
       delete updated[objectId];
       return { remoteLocks: updated };
     }),
+    setFollowingSocketId: (followingSocketId) => set({ followingSocketId }),
   };
 });
