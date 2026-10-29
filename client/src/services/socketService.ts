@@ -12,6 +12,8 @@ class SocketService {
   public onRemoteObjectRemoved?: (id: string) => void;
   public onRemoteCanvasCleared?: () => void;
   public onRoomInitialized?: (objects: Record<string, any>) => void;
+  public onLaserPointer?: (data: { socketId: string; x: number; y: number; color: string }) => void;
+  public onUserViewport?: (data: { socketId: string; sceneCenterX: number; sceneCenterY: number; zoom: number }) => void;
 
   public connect(roomId: string, nickname: string, color: string) {
     if (this.socket) {
@@ -116,10 +118,32 @@ class SocketService {
         this.onRemoteCanvasCleared();
       }
     });
+
+    // Remote Laser pointer
+    this.socket.on('laser_pointer', (data: { socketId: string; x: number; y: number; color: string }) => {
+      if (this.onLaserPointer) {
+        this.onLaserPointer(data);
+      }
+    });
+
+    // Remote User Viewport (Follow Me mode)
+    this.socket.on('user_viewport', (data: { socketId: string; sceneCenterX: number; sceneCenterY: number; zoom: number }) => {
+      if (this.onUserViewport) {
+        this.onUserViewport(data);
+      }
+    });
   }
 
   public emitCursorMove(x: number, y: number) {
     this.socket?.emit('cursor_move', { x, y });
+  }
+
+  public emitLaserPointer(x: number, y: number, color: string) {
+    this.socket?.emit('laser_pointer', { x, y, color });
+  }
+
+  public emitViewportMove(sceneCenterX: number, sceneCenterY: number, zoom: number) {
+    this.socket?.emit('viewport_move', { sceneCenterX, sceneCenterY, zoom });
   }
 
   public emitObjectLock(objectId: string) {
