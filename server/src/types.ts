@@ -31,6 +31,8 @@ export interface RoomState {
 export interface ClientToServerEvents {
   join_room: (data: { roomId: string; nickname: string; color: string }) => void;
   cursor_move: (data: { x: number; y: number }) => void;
+  laser_pointer: (data: { x: number; y: number; color: string }) => void;
+  viewport_move: (data: { sceneCenterX: number; sceneCenterY: number; zoom: number }) => void;
   object_lock: (data: { objectId: string }) => void;
   object_unlock: (data: { objectId: string }) => void;
   object_transforming: (data: { id: string; left: number; top: number; scaleX?: number; scaleY?: number; angle?: number }) => void;
@@ -48,6 +50,8 @@ export interface ServerToClientEvents {
   user_joined: (user: UserPresence) => void;
   user_left: (data: { socketId: string }) => void;
   cursor_update: (data: { socketId: string; x: number; y: number }) => void;
+  laser_pointer: (data: { socketId: string; x: number; y: number; color: string }) => void;
+  user_viewport: (data: { socketId: string; sceneCenterX: number; sceneCenterY: number; zoom: number }) => void;
   object_locked: (lock: EphemeralLock) => void;
   object_unlocked: (data: { objectId: string }) => void;
   object_transforming: (data: { id: string; left: number; top: number; scaleX?: number; scaleY?: number; angle?: number }) => void;

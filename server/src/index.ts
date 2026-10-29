@@ -74,6 +74,32 @@ io.on('connection', (socket: Socket<ClientToServerEvents, ServerToClientEvents>)
     }
   });
 
+  // Laser Pointer Stream (Transient glowing presentation trail)
+  socket.on('laser_pointer', ({ x, y, color }) => {
+    const roomId = roomManager.getRoomIdForSocket(socket.id);
+    if (roomId) {
+      socket.to(roomId).emit('laser_pointer', {
+        socketId: socket.id,
+        x,
+        y,
+        color,
+      });
+    }
+  });
+
+  // "Follow Me" Viewport Position Synchronization
+  socket.on('viewport_move', ({ sceneCenterX, sceneCenterY, zoom }) => {
+    const roomId = roomManager.getRoomIdForSocket(socket.id);
+    if (roomId) {
+      socket.to(roomId).emit('user_viewport', {
+        socketId: socket.id,
+        sceneCenterX,
+        sceneCenterY,
+        zoom,
+      });
+    }
+  });
+
   // Ephemeral Object Lock (Prevents dual-user drag conflicts)
   socket.on('object_lock', ({ objectId }) => {
     const result = roomManager.acquireLock(socket.id, objectId);
