@@ -6,6 +6,7 @@ import {
   Polygon, 
   Textbox, 
   Group, 
+  ActiveSelection,
   Line,
   Point, 
   PencilBrush, 
@@ -158,6 +159,14 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
 
       const objectsCount = canvasRef.current.getObjects().length;
       setHasObjects(objectsCount > 0);
+
+      // Auto-save board state to browser LocalStorage so designs survive tab close / refresh
+      try {
+        localStorage.setItem(`collabspace_board_${boardId}`, json);
+        localStorage.setItem('collabspace_last_board_id', boardId);
+      } catch {
+        // Ignore storage quota errors
+      }
     } catch (err) {
       console.error('History save error:', err);
     }
@@ -228,6 +237,11 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
       fireRightClick: true,
       fireMiddleClick: true,
     });
+    // Premium Marquee Multi-Selection Box styling (Figma / Excalidraw UX)
+    canvas.selectionColor = 'rgba(99, 102, 241, 0.12)';
+    canvas.selectionBorderColor = '#6366f1';
+    canvas.selectionLineWidth = 1.5;
+    canvas.selectionDashArray = [4, 4];
     canvasRef.current = canvas;
 
     // Initial brush setup
@@ -617,6 +631,7 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
             left: finalLeft,
             top: finalTop,
             subTargetCheck: true,
+            isSticky: true,
           } as any);
           canvas.add(stickyGroup);
           canvas.setActiveObject(stickyGroup);
@@ -733,6 +748,10 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
         }
       }
 
+      const isMultiple = activeObj.type === 'activeselection';
+      const isGroup = activeObj.type === 'group';
+      const isSticky = !!(activeObj as any).isSticky;
+
       setSelectedObject({
         id: objId,
         type: activeObj.type,
@@ -752,6 +771,11 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
         top: bound.top,
         width: bound.width,
         height: bound.height,
+        isMultiple,
+        isGroup,
+        isSticky,
+        canGroup: isMultiple,
+        canUngroup: isGroup && !isSticky,
       });
     };
     updateSelectionStateRef.current = updateSelectionState;
@@ -931,7 +955,36 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     };
 
     socketService.onRoomInitialized = async (objects) => {
-      if (!objects || Object.keys(objects).length === 0) return;
+      if (!objects || Object.keys(objects).length === 0) {
+        // Auto-restore saved design from browser LocalStorage if room is newly initialized
+        try {
+          const cachedJson = localStorage.getItem(`collabspace_board_${boardId}`);
+          if (cachedJson) {
+            const parsed = JSON.parse(cachedJson);
+            if (parsed.objects && parsed.objects.length > 0) {
+              const enlivened = await util.enlivenObjects(parsed.objects);
+              enlivened.forEach((item) => {
+                if ((item as any).isConnector) {
+                  attachArrowHead(item as Line);
+                }
+                canvas.add(item as FabricObject);
+                socketService.emitObjectAdded(
+                  (item as any).toObject([
+                    'id', 'name', 'shadow', 'rx', 'ry', 'strokeDashArray', 'strokeWidth',
+                    'fontSize', 'fontFamily', 'textAlign', 'isConnector', 'isCurved',
+                    'curvature', 'arrowhead', 'fromId', 'toId', 'fromAnchor', 'toAnchor'
+                  ])
+                );
+              });
+              canvas.requestRenderAll();
+              setHasObjects(canvas.getObjects().length > 0);
+            }
+          }
+        } catch {
+          // Ignore parse errors on corrupted cache
+        }
+        return;
+      }
       isRemoteMutationRef.current = true;
       const list = Object.values(objects);
       const enlivened = await util.enlivenObjects(list);
@@ -991,13 +1044,52 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
         e.preventDefault();
         redo();
       }
-      if ((e.key === 'Delete' || e.key === 'Backspace') && (e.target as HTMLElement).tagName !== 'INPUT') {
+
+      // Select All Objects on Canvas (Ctrl+A / Cmd+A)
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a') {
+        const isInput = (e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA' || (canvas.getActiveObject() as any)?.isEditing;
+        if (!isInput) {
+          e.preventDefault();
+          selectAll();
+          return;
+        }
+      }
+
+      // Group Objects (Ctrl+G / Cmd+G)
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'g') {
+        const isInput = (e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA' || (canvas.getActiveObject() as any)?.isEditing;
+        if (!isInput) {
+          e.preventDefault();
+          groupSelected();
+          return;
+        }
+      }
+
+      // Ungroup Objects (Ctrl+Shift+G / Cmd+Shift+G)
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'g') {
+        const isInput = (e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA' || (canvas.getActiveObject() as any)?.isEditing;
+        if (!isInput) {
+          e.preventDefault();
+          ungroupSelected();
+          return;
+        }
+      }
+
+      // Duplicate Objects (Ctrl+D / Cmd+D)
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'd') {
+        const isInput = (e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA' || (canvas.getActiveObject() as any)?.isEditing;
+        if (!isInput) {
+          e.preventDefault();
+          duplicateSelected();
+          return;
+        }
+      }
+
+      if ((e.key === 'Delete' || e.key === 'Backspace') && (e.target as HTMLElement).tagName !== 'INPUT' && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
         const activeObj = canvas.getActiveObject();
         if (activeObj && !(activeObj as any).isEditing) {
-          canvas.remove(activeObj);
-          canvas.discardActiveObject();
-          canvas.requestRenderAll();
-          saveHistory();
+          e.preventDefault();
+          deleteSelected();
         }
       }
 
@@ -1407,6 +1499,7 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
       left: x - width / 2,
       top: y - height / 2,
       subTargetCheck: true,
+      isSticky: true,
     } as any);
 
     canvas.add(stickyGroup);
@@ -1517,62 +1610,122 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     const canvas = canvasRef.current;
     if (!canvas) return;
     const active = canvas.getActiveObject();
-    if (active) {
-      if (active.type === 'group') {
-        const bg = (active as Group).getObjects()[0];
-        if (bg) bg.set('fill', color);
-      } else {
-        active.set('fill', color);
-      }
+    if (!active) return;
+
+    if (active.type === 'activeselection') {
+      const objects = (active as any).getObjects();
+      objects.forEach((o: any) => {
+        if (o.type === 'group') {
+          const bg = o.getObjects()[0];
+          if (bg) bg.set('fill', color);
+        } else {
+          o.set('fill', color);
+        }
+        socketService.emitObjectModified(
+          o.toObject(['id', 'name', 'shadow', 'rx', 'ry', 'strokeDashArray', 'strokeWidth', 'fontSize', 'fontFamily', 'textAlign', 'isConnector', 'fromId', 'toId', 'fromAnchor', 'toAnchor'])
+        );
+      });
       canvas.requestRenderAll();
       saveHistory();
       updateSelectionStateRef.current();
-      socketService.emitObjectModified(
-        (active as any).toObject(['id', 'name', 'shadow', 'rx', 'ry', 'strokeDashArray', 'strokeWidth', 'fontSize', 'fontFamily', 'textAlign', 'isConnector', 'fromId', 'toId', 'fromAnchor', 'toAnchor'])
-      );
+      return;
     }
+
+    if (active.type === 'group') {
+      const bg = (active as Group).getObjects()[0];
+      if (bg) bg.set('fill', color);
+    } else {
+      active.set('fill', color);
+    }
+    canvas.requestRenderAll();
+    saveHistory();
+    updateSelectionStateRef.current();
+    socketService.emitObjectModified(
+      (active as any).toObject(['id', 'name', 'shadow', 'rx', 'ry', 'strokeDashArray', 'strokeWidth', 'fontSize', 'fontFamily', 'textAlign', 'isConnector', 'fromId', 'toId', 'fromAnchor', 'toAnchor'])
+    );
   }, [saveHistory]);
 
   const changeSelectedStroke = useCallback((color: string) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const active = canvas.getActiveObject();
-    if (active) {
-      if (active.type === 'group') {
-        const bg = (active as Group).getObjects()[0];
-        if (bg) bg.set('stroke', color);
-      } else {
-        active.set('stroke', color);
-      }
+    if (!active) return;
+
+    if (active.type === 'activeselection') {
+      const objects = (active as any).getObjects();
+      objects.forEach((o: any) => {
+        if (o.type === 'group') {
+          const bg = o.getObjects()[0];
+          if (bg) bg.set('stroke', color);
+        } else {
+          o.set('stroke', color);
+        }
+        socketService.emitObjectModified(
+          o.toObject(['id', 'name', 'shadow', 'rx', 'ry', 'strokeDashArray', 'strokeWidth', 'fontSize', 'fontFamily', 'textAlign', 'isConnector', 'fromId', 'toId', 'fromAnchor', 'toAnchor'])
+        );
+      });
       canvas.requestRenderAll();
       saveHistory();
       updateSelectionStateRef.current();
-      socketService.emitObjectModified(
-        (active as any).toObject(['id', 'name', 'shadow', 'rx', 'ry', 'strokeDashArray', 'strokeWidth', 'fontSize', 'fontFamily', 'textAlign', 'isConnector', 'fromId', 'toId', 'fromAnchor', 'toAnchor'])
-      );
+      return;
     }
+
+    if (active.type === 'group') {
+      const bg = (active as Group).getObjects()[0];
+      if (bg) bg.set('stroke', color);
+    } else {
+      active.set('stroke', color);
+    }
+    canvas.requestRenderAll();
+    saveHistory();
+    updateSelectionStateRef.current();
+    socketService.emitObjectModified(
+      (active as any).toObject(['id', 'name', 'shadow', 'rx', 'ry', 'strokeDashArray', 'strokeWidth', 'fontSize', 'fontFamily', 'textAlign', 'isConnector', 'fromId', 'toId', 'fromAnchor', 'toAnchor'])
+    );
   }, [saveHistory]);
 
   const changeSelectedStrokeWidth = useCallback((width: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const active = canvas.getActiveObject();
-    if (active) {
-      if (active.type === 'group') {
-        const bg = (active as Group).getObjects()[0];
-        if (bg) bg.set('strokeWidth', width);
-      } else {
-        active.set('strokeWidth', width);
-      }
+    if (!active) return;
+
+    if (active.type === 'activeselection') {
+      const objects = (active as any).getObjects();
+      objects.forEach((o: any) => {
+        if (o.type === 'group') {
+          const bg = o.getObjects()[0];
+          if (bg) bg.set('strokeWidth', width);
+        } else {
+          o.set('strokeWidth', width);
+        }
+        o.setCoords();
+        socketService.emitObjectModified(
+          o.toObject(['id', 'name', 'shadow', 'rx', 'ry', 'strokeDashArray', 'strokeWidth', 'isConnector', 'fromId', 'toId', 'fromAnchor', 'toAnchor'])
+        );
+      });
       active.setCoords();
       canvas.requestRenderAll();
       saveHistory();
       setStrokeWidth(width);
       updateSelectionStateRef.current();
-      socketService.emitObjectModified(
-        (active as any).toObject(['id', 'name', 'shadow', 'rx', 'ry', 'strokeDashArray', 'strokeWidth', 'isConnector', 'fromId', 'toId', 'fromAnchor', 'toAnchor'])
-      );
+      return;
     }
+
+    if (active.type === 'group') {
+      const bg = (active as Group).getObjects()[0];
+      if (bg) bg.set('strokeWidth', width);
+    } else {
+      active.set('strokeWidth', width);
+    }
+    active.setCoords();
+    canvas.requestRenderAll();
+    saveHistory();
+    setStrokeWidth(width);
+    updateSelectionStateRef.current();
+    socketService.emitObjectModified(
+      (active as any).toObject(['id', 'name', 'shadow', 'rx', 'ry', 'strokeDashArray', 'strokeWidth', 'isConnector', 'fromId', 'toId', 'fromAnchor', 'toAnchor'])
+    );
   }, [saveHistory, setStrokeWidth]);
 
   const changeSelectedStrokeStyle = useCallback((style: 'solid' | 'dashed' | 'dotted') => {
@@ -1698,30 +1851,60 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     const canvas = canvasRef.current;
     if (!canvas) return;
     const active = canvas.getActiveObject();
-    if (active) {
-      const objId = (active as any).id;
-      // Detach any connectors bound to this shape so no orphaned references remain
-      const attachedConnectors = canvas.getObjects().filter(
-        (o: any) => o.isConnector && (o.fromId === objId || o.toId === objId)
-      );
-      attachedConnectors.forEach((c: any) => {
-        if (c.fromId === objId) {
-          c.fromId = undefined;
-          c.fromAnchor = undefined;
-        }
-        if (c.toId === objId) {
-          c.toId = undefined;
-          c.toAnchor = undefined;
+    if (!active) return;
+
+    // Handle ActiveSelection (multi-selection bulk delete)
+    if (active.type === 'activeselection') {
+      const objects = [...(active as any).getObjects()];
+      canvas.discardActiveObject();
+      objects.forEach((obj: any) => {
+        const objId = obj.id;
+        const attachedConnectors = canvas.getObjects().filter(
+          (o: any) => o.isConnector && (o.fromId === objId || o.toId === objId)
+        );
+        attachedConnectors.forEach((c: any) => {
+          if (c.fromId === objId) {
+            c.fromId = undefined;
+            c.fromAnchor = undefined;
+          }
+          if (c.toId === objId) {
+            c.toId = undefined;
+            c.toAnchor = undefined;
+          }
+        });
+        canvas.remove(obj);
+        if (objId) {
+          socketService.emitObjectRemoved(objId);
         }
       });
-
-      canvas.remove(active);
-      canvas.discardActiveObject();
       canvas.requestRenderAll();
       saveHistory();
-      if (objId) {
-        socketService.emitObjectRemoved(objId);
+      updateSelectionStateRef.current();
+      return;
+    }
+
+    const objId = (active as any).id;
+    // Detach any connectors bound to this shape so no orphaned references remain
+    const attachedConnectors = canvas.getObjects().filter(
+      (o: any) => o.isConnector && (o.fromId === objId || o.toId === objId)
+    );
+    attachedConnectors.forEach((c: any) => {
+      if (c.fromId === objId) {
+        c.fromId = undefined;
+        c.fromAnchor = undefined;
       }
+      if (c.toId === objId) {
+        c.toId = undefined;
+        c.toAnchor = undefined;
+      }
+    });
+
+    canvas.remove(active);
+    canvas.discardActiveObject();
+    canvas.requestRenderAll();
+    saveHistory();
+    if (objId) {
+      socketService.emitObjectRemoved(objId);
     }
   }, [saveHistory]);
 
@@ -1730,6 +1913,31 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     if (!canvas) return;
     const active = canvas.getActiveObject();
     if (!active) return;
+
+    if (active.type === 'activeselection') {
+      const objects = (active as any).getObjects();
+      const clonedObjects: FabricObject[] = [];
+      for (const obj of objects) {
+        const cloned = await obj.clone();
+        const newId = nanoid(8);
+        cloned.set({
+          id: newId,
+          left: obj.left + 24,
+          top: obj.top + 24,
+        } as any);
+        canvas.add(cloned);
+        clonedObjects.push(cloned);
+        socketService.emitObjectAdded(cloned.toObject(['id', 'name', 'shadow', 'rx', 'ry', 'strokeDashArray', 'strokeWidth', 'isConnector', 'isCurved', 'curvature', 'arrowhead']));
+      }
+      canvas.discardActiveObject();
+      const sel = new ActiveSelection(clonedObjects, { canvas });
+      canvas.setActiveObject(sel);
+      canvas.requestRenderAll();
+      saveHistory();
+      updateSelectionStateRef.current();
+      return;
+    }
+
     const cloned = await active.clone();
     const newId = nanoid(8);
     cloned.set({
@@ -1743,6 +1951,92 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     saveHistory();
     socketService.emitObjectAdded(cloned.toObject(['id', 'name', 'shadow', 'rx', 'ry']));
   }, [saveHistory]);
+
+  // Group Multi-Selected Objects (Ctrl+G)
+  const groupSelected = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const active = canvas.getActiveObject();
+    if (!active || active.type !== 'activeselection') return;
+
+    const activeSelection = active as ActiveSelection;
+    const objects = [...activeSelection.getObjects()];
+    if (objects.length < 2) return;
+
+    canvas.discardActiveObject();
+    objects.forEach((obj) => {
+      canvas.remove(obj);
+    });
+
+    const groupId = nanoid(8);
+    const group = new Group(objects, {
+      id: groupId,
+      subTargetCheck: true,
+    } as any);
+
+    canvas.add(group);
+    canvas.setActiveObject(group);
+    canvas.requestRenderAll();
+    saveHistory();
+
+    objects.forEach((obj) => {
+      if ((obj as any).id) {
+        socketService.emitObjectRemoved((obj as any).id);
+      }
+    });
+    socketService.emitObjectAdded((group as any).toObject(['id', 'name', 'shadow', 'rx', 'ry', 'subTargetCheck']));
+    updateSelectionStateRef.current();
+  }, [saveHistory]);
+
+  // Ungroup Grouped Objects (Ctrl+Shift+G)
+  const ungroupSelected = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const active = canvas.getActiveObject();
+    if (!active || active.type !== 'group' || (active as any).isSticky) return;
+
+    const group = active as Group;
+    const groupId = (group as any).id;
+    const objects = [...group.getObjects()];
+    if (objects.length === 0) return;
+
+    group.remove(...objects);
+    canvas.remove(group);
+    objects.forEach((obj) => {
+      canvas.add(obj);
+    });
+
+    const sel = new ActiveSelection(objects, { canvas });
+    canvas.setActiveObject(sel);
+    canvas.requestRenderAll();
+    saveHistory();
+
+    if (groupId) {
+      socketService.emitObjectRemoved(groupId);
+    }
+    objects.forEach((obj) => {
+      socketService.emitObjectAdded(obj.toObject(['id', 'name', 'shadow', 'rx', 'ry', 'strokeDashArray', 'strokeWidth', 'isConnector', 'isCurved', 'curvature', 'arrowhead']));
+    });
+    updateSelectionStateRef.current();
+  }, [saveHistory]);
+
+  // Select All Objects on Canvas (Ctrl+A)
+  const selectAll = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const objects = canvas.getObjects().filter((o: any) => !o.isGuideline && !o.isAnchorPoint && o.selectable !== false);
+    if (objects.length === 0) return;
+
+    if (objects.length === 1) {
+      canvas.setActiveObject(objects[0]);
+    } else {
+      canvas.discardActiveObject();
+      const sel = new ActiveSelection(objects, { canvas });
+      canvas.setActiveObject(sel);
+    }
+    canvas.requestRenderAll();
+    updateSelectionStateRef.current();
+  }, []);
 
   // Viewport zoom helpers
   const zoomIn = useCallback(() => {
@@ -1991,6 +2285,9 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     changeSelectedArrowhead,
     deleteSelected,
     duplicateSelected,
+    groupSelected,
+    ungroupSelected,
+    selectAll,
     zoomIn,
     zoomOut,
     resetZoom,
