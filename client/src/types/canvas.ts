@@ -68,5 +68,10 @@ export interface SelectedObjectState {
   top: number;
   width: number;
   height: number;
+  isMultiple?: boolean;
+  isGroup?: boolean;
+  isSticky?: boolean;
+  canGroup?: boolean;
+  canUngroup?: boolean;
 }
 

@@ -40,6 +40,8 @@ export function App() {
     changeSelectedArrowhead,
     deleteSelected,
     duplicateSelected,
+    groupSelected,
+    ungroupSelected,
     zoomIn,
     zoomOut,
     resetZoom,
@@ -121,6 +123,8 @@ export function App() {
         onChangeArrowhead={changeSelectedArrowhead}
         onDuplicate={duplicateSelected}
         onDelete={deleteSelected}
+        onGroup={groupSelected}
+        onUngroup={ungroupSelected}
         onTidyUp={tidyUp}
       />
 
