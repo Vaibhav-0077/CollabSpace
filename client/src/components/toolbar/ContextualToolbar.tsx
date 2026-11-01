@@ -1,5 +1,5 @@
 import React from 'react';
-import { Trash2, Copy, LayoutGrid, AlignLeft, AlignCenter, AlignRight } from 'lucide-react';
+import { Trash2, Copy, LayoutGrid, AlignLeft, AlignCenter, AlignRight, Boxes, Ungroup } from 'lucide-react';
 import { useCanvasStore } from '../../store/canvasStore';
 import { PASTEL_COLORS, STROKE_COLORS } from '../../types/canvas';
 
@@ -15,6 +15,8 @@ interface ContextualToolbarProps {
   onChangeArrowhead?: (style: 'end' | 'both' | 'none') => void;
   onDuplicate: () => void;
   onDelete: () => void;
+  onGroup?: () => void;
+  onUngroup?: () => void;
   onTidyUp?: () => void;
 }
 
@@ -30,6 +32,8 @@ export const ContextualToolbar: React.FC<ContextualToolbarProps> = ({
   onChangeArrowhead,
   onDuplicate,
   onDelete,
+  onGroup,
+  onUngroup,
   onTidyUp,
 }) => {
   const selectedObject = useCanvasStore((state) => state.selectedObject);
@@ -168,12 +172,36 @@ export const ContextualToolbar: React.FC<ContextualToolbarProps> = ({
             </button>
           )}
 
+          {(selectedObject.isMultiple || selectedObject.type === 'activeselection' || selectedObject.canGroup) && onGroup && (
+            <button
+              type="button"
+              className="dock-tool-btn"
+              style={{ width: '28px', height: '28px', color: '#818cf8' }}
+              onClick={onGroup}
+              title="Group Objects (Ctrl+G)"
+            >
+              <Boxes size={14} />
+            </button>
+          )}
+
+          {((selectedObject.isGroup && !selectedObject.isSticky) || selectedObject.canUngroup) && onUngroup && (
+            <button
+              type="button"
+              className="dock-tool-btn"
+              style={{ width: '28px', height: '28px', color: '#c084fc' }}
+              onClick={onUngroup}
+              title="Ungroup (Ctrl+Shift+G)"
+            >
+              <Ungroup size={14} />
+            </button>
+          )}
+
           <button
             type="button"
             className="dock-tool-btn"
             style={{ width: '28px', height: '28px' }}
             onClick={onDuplicate}
-            title="Duplicate"
+            title="Duplicate (Ctrl+D)"
           >
             <Copy size={14} />
           </button>
