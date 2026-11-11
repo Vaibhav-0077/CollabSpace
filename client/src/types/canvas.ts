@@ -73,5 +73,6 @@ export interface SelectedObjectState {
   isSticky?: boolean;
   canGroup?: boolean;
   canUngroup?: boolean;
+  isRough?: boolean;
 }
 
