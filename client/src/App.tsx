@@ -42,6 +42,7 @@ export function App() {
     duplicateSelected,
     groupSelected,
     ungroupSelected,
+    toggleSelectedRough,
     zoomIn,
     zoomOut,
     resetZoom,
@@ -126,6 +127,7 @@ export function App() {
         onGroup={groupSelected}
         onUngroup={ungroupSelected}
         onTidyUp={tidyUp}
+        onToggleRough={toggleSelectedRough}
       />
 
       {/* Interactive Page Scrollbars */}

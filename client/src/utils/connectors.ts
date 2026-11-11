@@ -1,5 +1,7 @@
 import { Canvas, FabricObject, Line, Circle, Shadow, Control, Point } from 'fabric';
 import { nanoid } from 'nanoid';
+import { renderRoughConnector } from './roughRenderer';
+import { useCanvasStore } from '../store/canvasStore';
 
 export type AnchorType = 'top' | 'right' | 'bottom' | 'left';
 
@@ -203,6 +205,12 @@ function renderCurveHandleCircle(
 export function attachArrowHead(line: Line) {
   // Custom render: draws straight or curved quadratic bezier + directional arrowhead
   (line as any)._render = function (ctx: CanvasRenderingContext2D) {
+    const isRough = (this as any).isRough ?? useCanvasStore.getState().roughMode;
+    if (isRough) {
+      renderRoughConnector(ctx, this as Line);
+      return;
+    }
+
     const p = (this as any).calcLinePoints();
     const midX = (p.x1 + p.x2) / 2;
     const midY = (p.y1 + p.y2) / 2;
