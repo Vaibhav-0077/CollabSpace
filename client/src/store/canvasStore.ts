@@ -26,6 +26,7 @@ interface CanvasStoreState {
   strokeWidth: number;
   zoom: number;
   theme: 'dark' | 'light';
+  roughMode: boolean;
   boardTitle: string;
   boardId: string;
   nickname: string;
@@ -54,6 +55,8 @@ interface CanvasStoreState {
   setZoom: (zoom: number) => void;
   setTheme: (theme: 'dark' | 'light') => void;
   toggleTheme: () => void;
+  setRoughMode: (rough: boolean) => void;
+  toggleRoughMode: () => void;
   setBoardTitle: (title: string) => void;
   setBoardId: (id: string) => void;
   setNickname: (name: string) => void;
@@ -85,6 +88,7 @@ export const useCanvasStore = create<CanvasStoreState>((set) => {
   const savedName = localStorage.getItem('collabspace_nickname') || `Guest ${Math.floor(100 + Math.random() * 900)}`;
   const savedColor = localStorage.getItem('collabspace_color') || RANDOM_COLORS[Math.floor(Math.random() * RANDOM_COLORS.length)];
   const savedTheme = (localStorage.getItem('collabspace_theme') as 'dark' | 'light') || 'dark';
+  const savedRoughMode = localStorage.getItem('collabspace_rough_mode') === 'true';
 
   return {
     activeTool: 'select',
@@ -93,6 +97,7 @@ export const useCanvasStore = create<CanvasStoreState>((set) => {
     strokeWidth: 2,
     zoom: 1.0,
     theme: savedTheme,
+    roughMode: savedRoughMode,
     boardTitle: 'Architecture Ideation',
     boardId: existingBoardId,
     nickname: savedName,
@@ -128,6 +133,15 @@ export const useCanvasStore = create<CanvasStoreState>((set) => {
       localStorage.setItem('collabspace_theme', nextTheme);
       document.documentElement.setAttribute('data-theme', nextTheme);
       return { theme: nextTheme };
+    }),
+    setRoughMode: (roughMode) => {
+      localStorage.setItem('collabspace_rough_mode', String(roughMode));
+      set({ roughMode });
+    },
+    toggleRoughMode: () => set((state) => {
+      const nextRough = !state.roughMode;
+      localStorage.setItem('collabspace_rough_mode', String(nextRough));
+      return { roughMode: nextRough };
     }),
     setBoardTitle: (boardTitle) => set({ boardTitle }),
     setBoardId: (boardId) => set({ boardId }),
