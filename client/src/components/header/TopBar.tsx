@@ -9,7 +9,8 @@ import {
   FileCode,
   Copy,
   Check,
-  Eye
+  Eye,
+  PencilLine
 } from 'lucide-react';
 import { useCanvasStore } from '../../store/canvasStore';
 
@@ -64,7 +65,9 @@ export const TopBar: React.FC<TopBarProps> = ({
     isConnected,
     setIsShareModalOpen,
     followingSocketId,
-    setFollowingSocketId
+    setFollowingSocketId,
+    roughMode,
+    toggleRoughMode
   } = useCanvasStore();
 
   const otherCollaborators = Object.values(collaborators).filter(
@@ -316,6 +319,17 @@ export const TopBar: React.FC<TopBarProps> = ({
             </div>
           )}
         </div>
+
+        {/* Architect / Hand-Drawn Sketchy Mode Toggle */}
+        <button
+          type="button"
+          className={`rough-mode-toggle-btn ${roughMode ? 'active' : ''}`}
+          onClick={toggleRoughMode}
+          title={roughMode ? "Switch to Architect Mode (Clean & Crisp)" : "Switch to Hand-Drawn Mode (Rough.js Sketchy Style)"}
+        >
+          <PencilLine size={14} />
+          <span className="rough-mode-label">{roughMode ? 'Sketchy' : 'Architect'}</span>
+        </button>
 
         {/* Theme Toggle */}
         <button

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Trash2, Copy, LayoutGrid, AlignLeft, AlignCenter, AlignRight, Boxes, Ungroup } from 'lucide-react';
+import { Trash2, Copy, LayoutGrid, AlignLeft, AlignCenter, AlignRight, Boxes, Ungroup, PencilLine } from 'lucide-react';
 import { useCanvasStore } from '../../store/canvasStore';
 import { PASTEL_COLORS, STROKE_COLORS } from '../../types/canvas';
 
@@ -18,6 +18,7 @@ interface ContextualToolbarProps {
   onGroup?: () => void;
   onUngroup?: () => void;
   onTidyUp?: () => void;
+  onToggleRough?: () => void;
 }
 
 export const ContextualToolbar: React.FC<ContextualToolbarProps> = ({
@@ -35,6 +36,7 @@ export const ContextualToolbar: React.FC<ContextualToolbarProps> = ({
   onGroup,
   onUngroup,
   onTidyUp,
+  onToggleRough,
 }) => {
   const selectedObject = useCanvasStore((state) => state.selectedObject);
 
@@ -169,6 +171,23 @@ export const ContextualToolbar: React.FC<ContextualToolbarProps> = ({
               title="Tidy Up & Auto-Align"
             >
               <LayoutGrid size={14} />
+            </button>
+          )}
+
+          {onToggleRough && (
+            <button
+              type="button"
+              className={`dock-tool-btn ${selectedObject.isRough ? 'active' : ''}`}
+              style={{
+                width: '28px',
+                height: '28px',
+                color: selectedObject.isRough ? '#f59e0b' : 'var(--text-secondary)',
+                backgroundColor: selectedObject.isRough ? 'rgba(245, 158, 11, 0.15)' : undefined,
+              }}
+              onClick={onToggleRough}
+              title={selectedObject.isRough ? 'Switch to Crisp / Architect Style' : 'Switch to Hand-Drawn / Sketchy Style (Rough.js)'}
+            >
+              <PencilLine size={14} />
             </button>
           )}
 
