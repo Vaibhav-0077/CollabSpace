@@ -33,6 +33,10 @@ import {
 } from '../utils/connectors';
 import { tidyUpCanvasObjects } from '../utils/tidyUp';
 import { emitLocalLaserPoint } from '../components/collaboration/LaserOverlay';
+import { initRoughPatch } from '../utils/roughRenderer';
+
+// Initialize Rough.js hand-drawn sketch renderers
+initRoughPatch();
 
 // Customize Fabric defaults for an ultra-premium feel
 FabricObject.prototype.set({
@@ -63,6 +67,7 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     setUndoRedoState,
     setSelectedObject,
     setHasObjects,
+    roughMode,
     boardId,
     boardTitle,
     nickname,
@@ -751,6 +756,7 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
       const isMultiple = activeObj.type === 'activeselection';
       const isGroup = activeObj.type === 'group';
       const isSticky = !!(activeObj as any).isSticky;
+      const isRough = (activeObj as any).isRough ?? useCanvasStore.getState().roughMode;
 
       setSelectedObject({
         id: objId,
@@ -776,6 +782,7 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
         isSticky,
         canGroup: isMultiple,
         canUngroup: isGroup && !isSticky,
+        isRough,
       });
     };
     updateSelectionStateRef.current = updateSelectionState;
@@ -1335,6 +1342,29 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
       }
     };
   }, []);
+
+  // When roughMode (Sketchy vs Architect) changes, clear rough caches & request fresh render
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    canvas.getObjects().forEach((obj: any) => {
+      obj.set('dirty', true);
+      obj._roughDrawable = null;
+      obj._roughDrawables = null;
+      obj._roughCacheKey = null;
+      if (obj.type === 'group') {
+        (obj as Group).getObjects().forEach((child: any) => {
+          child.set('dirty', true);
+          child._roughDrawable = null;
+          child._roughDrawables = null;
+          child._roughCacheKey = null;
+        });
+      }
+    });
+
+    canvas.requestRenderAll();
+  }, [roughMode]);
 
   // Sync tool mode changes
   useEffect(() => {
@@ -2038,6 +2068,73 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     updateSelectionStateRef.current();
   }, []);
 
+  // Toggle Hand-Drawn Sketchy style on Selected Object(s)
+  const toggleSelectedRough = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const active = canvas.getActiveObject();
+    if (!active) return;
+
+    if (active.type === 'activeselection') {
+      const objects = (active as any).getObjects();
+      objects.forEach((obj: any) => {
+        const cur = obj.isRough ?? useCanvasStore.getState().roughMode;
+        obj.isRough = !cur;
+        obj._roughDrawable = null;
+        obj._roughDrawables = null;
+        obj._roughCacheKey = null;
+        obj.set('dirty', true);
+        if (obj.type === 'group') {
+          obj.getObjects().forEach((child: any) => {
+            child.isRough = !cur;
+            child._roughDrawable = null;
+            child._roughDrawables = null;
+            child._roughCacheKey = null;
+            child.set('dirty', true);
+          });
+        }
+        socketService.emitObjectModified(
+          obj.toObject([
+            'id', 'name', 'shadow', 'rx', 'ry', 'strokeDashArray', 'strokeWidth',
+            'fontSize', 'fontFamily', 'textAlign', 'isConnector', 'isCurved',
+            'curvature', 'arrowhead', 'fromId', 'toId', 'fromAnchor', 'toAnchor', 'isRough'
+          ])
+        );
+      });
+      canvas.requestRenderAll();
+      saveHistory();
+      updateSelectionStateRef.current();
+      return;
+    }
+
+    const currentRough = (active as any).isRough ?? useCanvasStore.getState().roughMode;
+    const nextRough = !currentRough;
+    (active as any).isRough = nextRough;
+    (active as any)._roughDrawable = null;
+    (active as any)._roughDrawables = null;
+    (active as any)._roughCacheKey = null;
+    active.set('dirty', true);
+    if (active.type === 'group') {
+      (active as Group).getObjects().forEach((child: any) => {
+        child.isRough = nextRough;
+        child._roughDrawable = null;
+        child._roughDrawables = null;
+        child._roughCacheKey = null;
+        child.set('dirty', true);
+      });
+    }
+    canvas.requestRenderAll();
+    saveHistory();
+    updateSelectionStateRef.current();
+    socketService.emitObjectModified(
+      (active as any).toObject([
+        'id', 'name', 'shadow', 'rx', 'ry', 'strokeDashArray', 'strokeWidth',
+        'fontSize', 'fontFamily', 'textAlign', 'isConnector', 'isCurved',
+        'curvature', 'arrowhead', 'fromId', 'toId', 'fromAnchor', 'toAnchor', 'isRough'
+      ])
+    );
+  }, [saveHistory]);
+
   // Viewport zoom helpers
   const zoomIn = useCallback(() => {
     const canvas = canvasRef.current;
@@ -2288,6 +2385,7 @@ export function useFabricCanvas(containerRef: React.RefObject<HTMLDivElement | n
     groupSelected,
     ungroupSelected,
     selectAll,
+    toggleSelectedRough,
     zoomIn,
     zoomOut,
     resetZoom,
