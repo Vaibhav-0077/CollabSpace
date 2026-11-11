@@ -3,7 +3,9 @@ import { useCanvasStore } from '../store/canvasStore';
 
 class SocketService {
   private socket: Socket | null = null;
-  private backendUrl = (import.meta as any).env?.VITE_SERVER_URL || 'http://localhost:3001';
+  private backendUrl = (import.meta as any).env?.VITE_SERVER_URL 
+    ? (import.meta as any).env.VITE_SERVER_URL 
+    : ((import.meta as any).env?.PROD ? window.location.origin : 'http://localhost:3001');
 
   // Callbacks for Canvas mutation updates
   public onRemoteObjectAdded?: (object: any) => void;

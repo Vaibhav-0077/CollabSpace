@@ -2,6 +2,8 @@ import express from 'express';
 import { createServer } from 'http';
 import { Server, Socket } from 'socket.io';
 import cors from 'cors';
+import path from 'path';
+import fs from 'fs';
 import { roomManager } from './socket/roomManager.js';
 import { ClientToServerEvents, ServerToClientEvents } from './types.js';
 
@@ -10,16 +12,35 @@ const httpServer = createServer(app);
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
 
+// Flexible CORS setup supporting Localhost, Render, and custom client URLs
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  process.env.CLIENT_URL,
+].filter(Boolean) as string[];
+
+const corsOriginHandler = (origin: string | undefined, callback: (err: Error | null, origin?: any) => void) => {
+  if (!origin) return callback(null, true);
+  if (
+    allowedOrigins.includes(origin) || 
+    origin.endsWith('.onrender.com') || 
+    process.env.NODE_ENV !== 'production'
+  ) {
+    return callback(null, true);
+  }
+  return callback(null, true);
+};
+
 // Enable CORS for frontend clients
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
+  origin: corsOriginHandler,
   methods: ['GET', 'POST'],
   credentials: true,
 }));
 
 app.use(express.json());
 
-// Health check endpoint
+// Health check endpoint (Render uses this to verify deployment)
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 'CollabSpace Real-Time Server', time: new Date().toISOString() });
 });
@@ -38,7 +59,7 @@ app.get('/api/rooms/:roomId', (req, res) => {
 // Initialize Socket.IO with CORS
 const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
   cors: {
-    origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
+    origin: corsOriginHandler,
     methods: ['GET', 'POST'],
     credentials: true,
   },
@@ -179,6 +200,23 @@ io.on('connection', (socket: Socket<ClientToServerEvents, ServerToClientEvents>)
     }
   });
 });
+
+// Serve built static frontend bundle if present (Single unified Render deployment)
+const localClientDist = path.resolve(process.cwd(), 'client/dist');
+const parentClientDist = path.resolve(process.cwd(), '../client/dist');
+const staticPath = fs.existsSync(localClientDist) ? localClientDist : (fs.existsSync(parentClientDist) ? parentClientDist : null);
+
+if (staticPath) {
+  console.log(`📦 Serving static client bundle from: ${staticPath}`);
+  app.use(express.static(staticPath));
+
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/health') || req.path.startsWith('/socket.io')) {
+      return next();
+    }
+    res.sendFile(path.join(staticPath, 'index.html'));
+  });
+}
 
 httpServer.listen(PORT, () => {
   console.log(`🚀 CollabSpace Real-Time Server running on port ${PORT}`);
